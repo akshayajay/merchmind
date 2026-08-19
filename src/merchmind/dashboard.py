@@ -8,6 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 from merchmind.config import DataPaths, default_data_dir
+from merchmind.pipeline import run_pipeline
 
 st.set_page_config(page_title="MERCHMIND", page_icon="🧵", layout="wide")
 st.markdown(
@@ -31,19 +32,23 @@ def _money(value: float) -> str:
     return f"${value:,.0f}"
 
 
-def render() -> None:
+@st.cache_resource(show_spinner="Preparing the MERCHMIND demo dataset…")
+def _ensure_demo_data() -> DataPaths:
+    """Build a reproducible hosted demo when no persisted Gold layer is available."""
     paths = DataPaths(default_data_dir())
+    if not (paths.gold / "executive_kpis.json").exists():
+        run_pipeline(paths.root, transactions=50_000, customers=2_500, products=500)
+    return paths
+
+
+def render() -> None:
+    paths = _ensure_demo_data()
     kpi_path = paths.gold / "executive_kpis.json"
     st.title("MERCHMIND")
     st.caption("Fashion retail market intelligence and merchandising analytics")
 
     if not kpi_path.exists():
-        st.warning("No Gold data found. Run `merchmind run --transactions 50000` first.")
-        st.code(
-            "pip install -e '.[dev]'\n"
-            "merchmind run --transactions 50000\n"
-            "streamlit run src/merchmind/dashboard.py"
-        )
+        st.error("The demo dataset could not be prepared. Please refresh the app.")
         return
 
     kpis = _load_json(kpi_path)

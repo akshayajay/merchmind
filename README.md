@@ -60,6 +60,8 @@ streamlit run src/merchmind/dashboard.py
 - API documentation: `http://localhost:8000/docs`
 - Dashboard: `http://localhost:8501`
 
+On Streamlit Community Cloud, the dashboard creates the same deterministic 50,000-transaction demo dataset automatically at its first startup; no data files need to be committed.
+
 Or build the pipeline, API, dashboard, and Kafka-compatible broker together:
 
 ```bash
