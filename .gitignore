@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.venv/
+.env
+.DS_Store
+
+# Generated datasets and runtime artifacts
+data/bronze/
+data/silver/
+data/gold/
+data/reports/
+data/checkpoints/
+!data/.gitkeep
+
+# Terraform state and local plans
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.*
+infrastructure/terraform/*.tfplan
+infrastructure/terraform/.terraform.lock.hcl

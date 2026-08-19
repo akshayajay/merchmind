@@ -1,0 +1,75 @@
+services:
+  pipeline:
+    build: .
+    command: merchmind run --transactions 25000 --customers 1500 --products 350
+    volumes:
+      - merchmind-data:/app/data
+
+  api:
+    build: .
+    command: uvicorn merchmind.api:app --host 0.0.0.0 --port 8000
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - merchmind-data:/app/data:ro
+
+  dashboard:
+    build: .
+    command: streamlit run src/merchmind/dashboard.py --server.address 0.0.0.0
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    ports:
+      - "8501:8501"
+    volumes:
+      - merchmind-data:/app/data:ro
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: merchmind
+      POSTGRES_USER: merchmind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-merchmind}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U merchmind -d merchmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  warehouse:
+    build: .
+    command: python -m merchmind.warehouse --dsn postgresql://merchmind:${POSTGRES_PASSWORD:-merchmind}@postgres:5432/merchmind
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    volumes:
+      - merchmind-data:/app/data:ro
+
+  kafka:
+    image: redpandadata/redpanda:v24.3.5
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=kafka:9092
+    ports:
+      - "9092:9092"
+
+volumes:
+  merchmind-data:
+  postgres-data:

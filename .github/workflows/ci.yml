@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: merchmind
+          POSTGRES_USER: merchmind
+          POSTGRES_PASSWORD: merchmind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U merchmind -d merchmind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: pip install -e '.[dev,warehouse]'
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest
+      - name: Exercise pipeline
+        run: merchmind run --data-dir /tmp/merchmind-ci --transactions 5000 --customers 400 --products 120
+      - name: Load PostgreSQL warehouse and build analytical views
+        env:
+          MERCHMIND_POSTGRES_DSN: postgresql://merchmind:merchmind@localhost:5432/merchmind
+        run: python -m merchmind.warehouse --data-dir /tmp/merchmind-ci
