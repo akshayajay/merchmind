@@ -20,7 +20,7 @@ dependencies = [
   "pyarrow>=16,<26",
   "pydantic>=2.9,<3",
   "scikit-learn>=1.5,<2",
-  "streamlit>=1.39,<2",
+  "streamlit>=1.50,<2",
   "uvicorn[standard]>=0.30,<1",
 ]
 

@@ -8,6 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 from merchmind.config import DataPaths, default_data_dir
+from merchmind.live import serving_paths
 from merchmind.pipeline import run_pipeline
 
 st.set_page_config(page_title="MERCHMIND", page_icon="🧵", layout="wide")
@@ -41,8 +42,10 @@ def _ensure_demo_data() -> DataPaths:
     return paths
 
 
+@st.fragment(run_every="5s")
 def render() -> None:
-    paths = _ensure_demo_data()
+    base = _ensure_demo_data()
+    paths = serving_paths(base.root)
     kpi_path = paths.gold / "executive_kpis.json"
     st.title("MERCHMIND")
     st.caption("Fashion retail market intelligence and merchandising analytics")
@@ -51,6 +54,15 @@ def render() -> None:
         st.error("The demo dataset could not be prepared. Please refresh the app.")
         return
 
+    live_report = paths.reports / "live_refresh.json"
+    if live_report.exists():
+        status = _load_json(live_report)
+        st.caption(
+            f"Live data · Updated {status['published_at_utc']} · "
+            f"{status['new_transactions']:,} new transactions · Refreshes every 5 seconds"
+        )
+    else:
+        st.caption("Batch demo · Waiting for streaming updates")
     kpis = _load_json(kpi_path)
     daily = pd.read_parquet(paths.gold / "daily_category_performance.parquet")
     products = pd.read_parquet(paths.gold / "product_performance.parquet")
@@ -64,7 +76,8 @@ def render() -> None:
     metric_columns[2].metric("Orders", f"{int(kpis['orders']):,}")
     metric_columns[3].metric("Customers", f"{int(kpis['customers']):,}")
     metric_columns[4].metric(
-        "Quality pass rate", f"{100 * float(kpis['data_quality_pass_rate']):.1f}%"
+        "Stream quality" if live_report.exists() else "Quality pass rate",
+        f"{100 * float(kpis['data_quality_pass_rate']):.1f}%",
     )
 
     st.subheader("Market pulse")
@@ -80,7 +93,7 @@ def render() -> None:
             color_continuous_scale=["#d9c5b2", "#8c3b2a"],
             labels={"net_revenue": "Net revenue", "category": ""},
         ),
-        use_container_width=True,
+        width="stretch",
     )
     segment_summary = customers.groupby("segment", as_index=False)["customer_id"].nunique()
     right.plotly_chart(
@@ -91,7 +104,7 @@ def render() -> None:
             hole=0.58,
             color_discrete_sequence=["#8c3b2a", "#d58f72", "#315c55", "#c9a44c", "#86766b"],
         ),
-        use_container_width=True,
+        width="stretch",
     )
 
     st.subheader("Demand and merchandising")
@@ -107,7 +120,33 @@ def render() -> None:
         name="Forecast",
         line={"dash": "dash", "color": "#8c3b2a"},
     )
-    st.plotly_chart(history_chart, use_container_width=True)
+    history_chart.add_scatter(
+        x=category_forecast["forecast_date"],
+        y=category_forecast["upper_units"],
+        mode="lines",
+        line={"width": 0},
+        name="Upper band",
+        showlegend=False,
+    )
+    history_chart.add_scatter(
+        x=category_forecast["forecast_date"],
+        y=category_forecast["lower_units"],
+        mode="lines",
+        line={"width": 0},
+        fill="tonexty",
+        fillcolor="rgba(140,59,42,0.15)",
+        name="Nominal 80% range",
+    )
+    st.plotly_chart(history_chart, width="stretch")
+    backtest_path = base.reports / "forecast_backtest.json"
+    if backtest_path.exists():
+        evaluation = _load_json(backtest_path)
+        st.markdown("#### Forecast validation")
+        st.caption(
+            f"Rolling holdouts through {evaluation['data_end']} · "
+            f"{evaluation['folds']} folds · Synthetic data; historical evaluation"
+        )
+        st.dataframe(pd.DataFrame(evaluation["overall"]), hide_index=True, width="stretch")
 
     product_left, risk_right = st.columns(2)
     product_left.markdown("#### Slow-moving product watchlist")
@@ -117,7 +156,7 @@ def render() -> None:
             ["product_name", "category", "units_per_active_day", "average_discount", "return_rate"]
         ]
         .head(12),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     risk_right.markdown("#### Company inventory stress")
@@ -132,7 +171,7 @@ def render() -> None:
                 "inventory_growth_yoy_pct",
             ]
         ].sort_values("inventory_stress_score", ascending=False),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 

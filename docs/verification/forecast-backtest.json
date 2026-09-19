@@ -1,0 +1,282 @@
+{
+  "evaluated_at_utc": "2026-09-19T19:10:09.442216+00:00",
+  "data_start": "2024-01-01",
+  "data_end": "2025-12-30",
+  "horizon_days": 28,
+  "min_train_days": 84,
+  "step_days": 28,
+  "folds": 23,
+  "categories": 8,
+  "overall": [
+    {
+      "model": "last_week",
+      "observations": 5152,
+      "mae": 3.7873,
+      "rmse": 4.8921,
+      "wape_pct": 39.2453,
+      "bias_pct": -0.8247,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "observations": 5152,
+      "mae": 2.7777,
+      "rmse": 3.5386,
+      "wape_pct": 28.7839,
+      "bias_pct": -0.1468,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "weekday_mean_84d",
+      "observations": 5152,
+      "mae": 2.8371,
+      "rmse": 3.632,
+      "wape_pct": 29.3991,
+      "bias_pct": -0.0937,
+      "interval_coverage_pct": 75.2135
+    }
+  ],
+  "by_category": [
+    {
+      "model": "last_week",
+      "category": "Accessories",
+      "observations": 644,
+      "mae": 2.8913,
+      "rmse": 3.6742,
+      "wape_pct": 52.8077,
+      "bias_pct": -0.7374,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Activewear",
+      "observations": 644,
+      "mae": 3.8509,
+      "rmse": 4.9221,
+      "wape_pct": 37.2596,
+      "bias_pct": -5.5889,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Dresses",
+      "observations": 644,
+      "mae": 5.1941,
+      "rmse": 6.6437,
+      "wape_pct": 29.8794,
+      "bias_pct": 1.0451,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Knitwear",
+      "observations": 644,
+      "mae": 3.3276,
+      "rmse": 4.2487,
+      "wape_pct": 43.0235,
+      "bias_pct": 1.1845,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Outerwear",
+      "observations": 644,
+      "mae": 2.8696,
+      "rmse": 3.7003,
+      "wape_pct": 45.9473,
+      "bias_pct": -2.1382,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Shoes",
+      "observations": 644,
+      "mae": 3.854,
+      "rmse": 4.7614,
+      "wape_pct": 50.5911,
+      "bias_pct": 4.2805,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Tops",
+      "observations": 644,
+      "mae": 4.5435,
+      "rmse": 5.6913,
+      "wape_pct": 32.4103,
+      "bias_pct": -1.6393,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "last_week",
+      "category": "Trousers",
+      "observations": 644,
+      "mae": 3.7671,
+      "rmse": 4.7741,
+      "wape_pct": 44.8927,
+      "bias_pct": -3.0348,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Accessories",
+      "observations": 644,
+      "mae": 2.1409,
+      "rmse": 2.7109,
+      "wape_pct": 39.1014,
+      "bias_pct": -0.7657,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Activewear",
+      "observations": 644,
+      "mae": 3.0068,
+      "rmse": 3.7666,
+      "wape_pct": 29.0919,
+      "bias_pct": -0.4958,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Dresses",
+      "observations": 644,
+      "mae": 3.7874,
+      "rmse": 4.7578,
+      "wape_pct": 21.7871,
+      "bias_pct": -0.5538,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Knitwear",
+      "observations": 644,
+      "mae": 2.403,
+      "rmse": 3.0346,
+      "wape_pct": 31.0681,
+      "bias_pct": 0.5421,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Outerwear",
+      "observations": 644,
+      "mae": 2.1711,
+      "rmse": 2.7677,
+      "wape_pct": 34.7642,
+      "bias_pct": 0.3978,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Shoes",
+      "observations": 644,
+      "mae": 2.7214,
+      "rmse": 3.3307,
+      "wape_pct": 35.723,
+      "bias_pct": 0.3261,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Tops",
+      "observations": 644,
+      "mae": 3.3574,
+      "rmse": 4.1767,
+      "wape_pct": 23.9493,
+      "bias_pct": 0.0886,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "trailing_mean_28d",
+      "category": "Trousers",
+      "observations": 644,
+      "mae": 2.6339,
+      "rmse": 3.2546,
+      "wape_pct": 31.3881,
+      "bias_pct": -0.3331,
+      "interval_coverage_pct": null
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Accessories",
+      "observations": 644,
+      "mae": 2.1733,
+      "rmse": 2.7604,
+      "wape_pct": 39.6937,
+      "bias_pct": -1.0664,
+      "interval_coverage_pct": 74.2236
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Activewear",
+      "observations": 644,
+      "mae": 3.0626,
+      "rmse": 3.8278,
+      "wape_pct": 29.6325,
+      "bias_pct": -0.646,
+      "interval_coverage_pct": 75.6211
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Dresses",
+      "observations": 644,
+      "mae": 3.8366,
+      "rmse": 4.8681,
+      "wape_pct": 22.0706,
+      "bias_pct": -0.1694,
+      "interval_coverage_pct": 74.6894
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Knitwear",
+      "observations": 644,
+      "mae": 2.4586,
+      "rmse": 3.1082,
+      "wape_pct": 31.7872,
+      "bias_pct": 0.5726,
+      "interval_coverage_pct": 76.2422
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Outerwear",
+      "observations": 644,
+      "mae": 2.245,
+      "rmse": 2.8539,
+      "wape_pct": 35.9463,
+      "bias_pct": 0.8046,
+      "interval_coverage_pct": 73.2919
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Shoes",
+      "observations": 644,
+      "mae": 2.7609,
+      "rmse": 3.4066,
+      "wape_pct": 36.2417,
+      "bias_pct": 0.3359,
+      "interval_coverage_pct": 76.7081
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Tops",
+      "observations": 644,
+      "mae": 3.4445,
+      "rmse": 4.3195,
+      "wape_pct": 24.5709,
+      "bias_pct": -0.0137,
+      "interval_coverage_pct": 76.087
+    },
+    {
+      "model": "weekday_mean_84d",
+      "category": "Trousers",
+      "observations": 644,
+      "mae": 2.7151,
+      "rmse": 3.39,
+      "wape_pct": 32.356,
+      "bias_pct": -0.4286,
+      "interval_coverage_pct": 74.8447
+    }
+  ],
+  "interpretation": "Synthetic data evaluation; not evidence of real-retailer accuracy. WAPE uses pooled category-day errors. Coverage measures the existing nominal 80% bands; the bands have not been recalibrated on these holdouts."
+}

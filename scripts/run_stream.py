@@ -24,6 +24,22 @@ def main() -> None:
         "spark.sql.shuffle.partitions=2",
         "--conf",
         "spark.ui.enabled=false",
+        *(
+            [
+                "--conf",
+                f"spark.driver.host={os.environ['SPARK_DRIVER_HOST']}",
+                "--conf",
+                "spark.driver.bindAddress=0.0.0.0",
+                "--conf",
+                "spark.cores.max=2",
+                "--conf",
+                "spark.executor.cores=1",
+                "--conf",
+                "spark.executor.memory=512m",
+            ]
+            if os.getenv("SPARK_DRIVER_HOST")
+            else []
+        ),
         str(root / "jobs/spark/transaction_stream.py"),
         *sys.argv[1:],
     ]

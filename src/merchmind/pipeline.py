@@ -42,6 +42,37 @@ def _write_table(frame: pd.DataFrame, path: Path) -> None:
     frame.to_parquet(path, index=False, compression="snappy")
 
 
+def build_gold(
+    paths: DataPaths,
+    clean: pd.DataFrame,
+    products: pd.DataFrame,
+    customers: pd.DataFrame,
+    company_financials: pd.DataFrame,
+    macro_indicators: pd.DataFrame,
+    quality_report: dict,
+) -> int:
+    enriched = enrich_transactions(clean, products, customers)
+    daily_category = build_daily_category(enriched)
+    product_performance = build_product_performance(enriched)
+    customer_rfm = build_customer_rfm(enriched)
+    market_pulse = build_market_pulse(company_financials, macro_indicators)
+    category_forecast = build_category_forecast(daily_category)
+    executive_kpis = build_executive_kpis(enriched, quality_report)
+
+    gold_frames = {
+        "daily_category_performance": daily_category,
+        "product_performance": product_performance,
+        "customer_rfm": customer_rfm,
+        "market_pulse": market_pulse,
+        "category_forecast": category_forecast,
+    }
+    for name, frame in gold_frames.items():
+        _write_table(frame, paths.gold / f"{name}.parquet")
+    _write_json(executive_kpis, paths.gold / "executive_kpis.json")
+
+    return len(gold_frames) + 1
+
+
 def run_pipeline(
     data_dir: Path,
     transactions: int = 50_000,
@@ -73,31 +104,22 @@ def run_pipeline(
     _write_table(datasets["macro_indicators"], paths.silver / "macro_indicators.parquet")
     _write_json(validation.report, paths.reports / "quality_report.json")
 
-    enriched = enrich_transactions(validation.clean, datasets["products"], datasets["customers"])
-    daily_category = build_daily_category(enriched)
-    product_performance = build_product_performance(enriched)
-    customer_rfm = build_customer_rfm(enriched)
-    market_pulse = build_market_pulse(datasets["company_financials"], datasets["macro_indicators"])
-    category_forecast = build_category_forecast(daily_category)
-    executive_kpis = build_executive_kpis(enriched, validation.report)
-
-    gold_frames = {
-        "daily_category_performance": daily_category,
-        "product_performance": product_performance,
-        "customer_rfm": customer_rfm,
-        "market_pulse": market_pulse,
-        "category_forecast": category_forecast,
-    }
-    for name, frame in gold_frames.items():
-        _write_table(frame, paths.gold / f"{name}.parquet")
-    _write_json(executive_kpis, paths.gold / "executive_kpis.json")
+    gold_tables = build_gold(
+        paths,
+        validation.clean,
+        datasets["products"],
+        datasets["customers"],
+        datasets["company_financials"],
+        datasets["macro_indicators"],
+        validation.report,
+    )
 
     result = PipelineResult(
         data_dir=str(paths.root),
         source_rows=int(validation.report["source_rows"]),
         clean_rows=int(validation.report["clean_rows"]),
         quarantine_rows=int(validation.report["quarantine_rows"]),
-        gold_tables=len(gold_frames) + 1,
+        gold_tables=gold_tables,
         runtime_seconds=round(perf_counter() - started, 3),
     )
     manifest = {

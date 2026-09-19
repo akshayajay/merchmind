@@ -43,7 +43,7 @@ docker compose --profile streaming run -T --rm --no-deps spark python3 -c \
   'import pandas as pd; print(pd.read_parquet("/app/stream-data/output/raw").shape); print(pd.read_parquet("/app/stream-data/output/aggregates").head())'
 ```
 
-Read Parquet with Spark when inspecting a file sink after failures: Spark honors its `_spark_metadata` commit log; readers that glob every Parquet file could include uncommitted files left by an interrupted write. The automated test checks graceful checkpoint recovery; it does not claim crash-injection testing.
+Read Parquet with Spark when inspecting a file sink after failures: Spark honors its `_spark_metadata` commit log; readers that glob every Parquet file could include uncommitted files left by an interrupted write. The automated test also kills the running driver with SIGKILL after a raw-file commit, then verifies recovery using the same checkpoints. The live publisher honors the commit log too.
 
 ## Recovery and limits
 
@@ -53,11 +53,15 @@ Read Parquet with Spark when inspecting a file sink after failures: Spark honors
 - Missing retained offsets fail the consumer (`failOnDataLoss=true`) instead of silently skipping data. Retention must cover downtime.
 - Final windows need later event timestamps to advance the watermark. Waiting in wall-clock time does not finalize them. The test uses real later transactions, without injecting fake revenue into normal demo data.
 - Malformed/invalid events remain in the raw audit log but do not reach aggregates. This is not the full reference-aware Silver quarantine system.
-- Replaying a Parquet file twice intentionally creates two sets of events. Exactly-once business-ID ingestion, production authentication, replicated brokers and AWS/MSK integration remain future work.
-- Public SEC/BLS adapters and the batch dashboard are separate from this event stream.
+- Replaying a Parquet file twice intentionally creates two sets of Kafka events and affects the five-minute aggregates twice. The live serving publisher deduplicates business IDs (first valid value wins; baseline takes precedence). Production authentication and AWS/MSK integration remain unverified. A separate local lab tests replicated broker failure; see [validation](validation.md).
+- The live publisher connects committed transaction events to the dashboard. Product/customer dimensions and company/macro data remain baseline inputs; streaming does not fetch public APIs or synchronize PostgreSQL.
 
 ## Technical references
 
 - [Spark 4.0.1 Kafka connector and deployment](https://spark.apache.org/docs/4.0.1/streaming/structured-streaming-kafka-integration.html)
 - [Spark event-time watermarks and available-now triggers](https://spark.apache.org/docs/4.0.1/streaming/apis-on-dataframes-and-datasets.html)
 - [Redpanda local broker setup](https://docs.redpanda.com/streaming/current/get-started/quick-start/)
+
+## Live serving
+
+Run `docker compose --profile streaming up --build spark refresh api dashboard` after replay. The publisher polls committed raw files every five seconds. All six Gold outputs are built before one atomic pointer switch; failed builds preserve the previous snapshot. The dashboard polls the active snapshot every five seconds. See [publication semantics, scope and limitations](validation.md).

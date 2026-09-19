@@ -1,0 +1,14 @@
+{
+  "verified_date": "2026-09-19",
+  "automated_categories": 8,
+  "browser": "Codex in-app Chromium browser",
+  "desktop_viewport": "1280x720",
+  "narrow_viewport": "390x844",
+  "orders_before_second_event": 49401,
+  "orders_after_second_event": 49402,
+  "selected_category_before_and_after": "Shoes",
+  "automatic_update_without_reload": true,
+  "path": "Local Kafka -> Spark committed Parquet -> publisher -> Streamlit timed fragment",
+  "checks": ["KPI cards", "category selector", "demand forecast and bands", "forecast evaluation table", "live status", "responsive chart layout"],
+  "limits": "Primary dashboard workflow checked; not an exhaustive cross-browser or export-control test"
+}

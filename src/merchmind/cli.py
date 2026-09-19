@@ -25,6 +25,11 @@ def _parser() -> argparse.ArgumentParser:
 
     summary = subparsers.add_parser("summary", help="Print the latest executive KPIs")
     summary.add_argument("--data-dir", type=Path, default=default_data_dir())
+    backtest = subparsers.add_parser("backtest", help="Evaluate forecasts on rolling holdouts")
+    backtest.add_argument("--data-dir", type=Path, default=default_data_dir())
+    backtest.add_argument("--horizon", type=int, default=28)
+    backtest.add_argument("--min-train-days", type=int, default=84)
+    backtest.add_argument("--step", type=int, default=28)
     return parser
 
 
@@ -39,6 +44,14 @@ def main() -> None:
             seed=args.seed,
         )
         print(json.dumps(asdict(result), indent=2))
+        return
+    if args.command == "backtest":
+        from merchmind.backtest import run_backtest
+
+        report = run_backtest(
+            args.data_dir, horizon=args.horizon, min_train_days=args.min_train_days, step=args.step
+        )
+        print(json.dumps(report, indent=2))
         return
     if args.command == "summary":
         print(json.dumps(load_kpis(args.data_dir), indent=2))

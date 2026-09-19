@@ -1,0 +1,65 @@
+# Isolated, local-only fault-injection lab; no cloud services or exposed ports.
+x-spark: &spark
+  image: merchmind-resilience-spark
+  build:
+    context: .
+    dockerfile: Dockerfile.spark
+  volumes:
+    - ./data/resilience-evidence:/app/evidence
+    - resilience-ivy:/tmp/merchmind-ivy
+services:
+  broker-a:
+    image: redpandadata/redpanda:v24.3.5
+    command: [redpanda, start, --overprovisioned, --smp=1, --memory=512M,
+              --reserve-memory=0M, --check=false, --node-id=0,
+              --kafka-addr=0.0.0.0:9092, --advertise-kafka-addr=broker-a:9092,
+              --rpc-addr=0.0.0.0:33145, --advertise-rpc-addr=broker-a:33145,
+              "--seeds=broker-a:33145,broker-b:33145,broker-c:33145"]
+    healthcheck:
+      test: [CMD, rpk, cluster, info, -X, brokers=localhost:9092]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  broker-b:
+    image: redpandadata/redpanda:v24.3.5
+    command: [redpanda, start, --overprovisioned, --smp=1, --memory=512M,
+              --reserve-memory=0M, --check=false, --node-id=1,
+              --kafka-addr=0.0.0.0:9092, --advertise-kafka-addr=broker-b:9092,
+              --rpc-addr=0.0.0.0:33145, --advertise-rpc-addr=broker-b:33145,
+              "--seeds=broker-a:33145,broker-b:33145,broker-c:33145"]
+    healthcheck:
+      test: [CMD, rpk, cluster, info, -X, brokers=localhost:9092]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  broker-c:
+    image: redpandadata/redpanda:v24.3.5
+    command: [redpanda, start, --overprovisioned, --smp=1, --memory=512M,
+              --reserve-memory=0M, --check=false, --node-id=2,
+              --kafka-addr=0.0.0.0:9092, --advertise-kafka-addr=broker-c:9092,
+              --rpc-addr=0.0.0.0:33145, --advertise-rpc-addr=broker-c:33145,
+              "--seeds=broker-a:33145,broker-b:33145,broker-c:33145"]
+    healthcheck:
+      test: [CMD, rpk, cluster, info, -X, brokers=localhost:9092]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  spark-master:
+    <<: *spark
+    command: [/opt/spark/bin/spark-class, org.apache.spark.deploy.master.Master, --host, spark-master]
+  spark-worker-a:
+    <<: *spark
+    command: [/opt/spark/bin/spark-class, org.apache.spark.deploy.worker.Worker, --cores, "1", --memory, 1g, spark://spark-master:7077]
+    depends_on: [spark-master]
+  spark-worker-b:
+    <<: *spark
+    command: [/opt/spark/bin/spark-class, org.apache.spark.deploy.worker.Worker, --cores, "1", --memory, 1g, spark://spark-master:7077]
+    depends_on: [spark-master]
+  driver:
+    <<: *spark
+    command: [sleep, infinity]
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      SPARK_DRIVER_HOST: driver
+volumes:
+  resilience-ivy:

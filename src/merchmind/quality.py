@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 
@@ -19,12 +20,27 @@ def validate_transactions(
 ) -> ValidationResult:
     """Validate transaction contracts and preserve rejected rows for auditability."""
     frame = transactions.copy()
-    frame["transaction_ts"] = pd.to_datetime(frame["transaction_ts"], errors="coerce", utc=True)
+    frame["transaction_ts"] = pd.to_datetime(
+        frame["transaction_ts"], errors="coerce", utc=True, format="mixed"
+    )
 
+    frame["quantity"] = pd.to_numeric(frame["quantity"], errors="coerce")
+    frame["unit_price"] = pd.to_numeric(frame["unit_price"], errors="coerce")
+    frame["discount_pct"] = pd.to_numeric(frame["discount_pct"], errors="coerce")
     duplicate_mask = frame.duplicated("transaction_id", keep="first")
-    null_id_mask = frame[["transaction_id", "customer_id", "product_id"]].isna().any(axis=1)
-    invalid_quantity_mask = frame["quantity"].fillna(0).le(0)
-    invalid_price_mask = frame["unit_price"].fillna(-1).lt(0)
+    null_id_mask = (
+        frame[["transaction_id", "customer_id", "product_id"]]
+        .apply(
+            lambda column: column.map(lambda value: not isinstance(value, str) or not value.strip())
+        )
+        .any(axis=1)
+    )
+    invalid_quantity_mask = (
+        frame["quantity"].fillna(0).le(0)
+        | ~np.isfinite(frame["quantity"])
+        | frame["quantity"].mod(1).ne(0)
+    )
+    invalid_price_mask = frame["unit_price"].fillna(-1).lt(0) | ~np.isfinite(frame["unit_price"])
     invalid_timestamp_mask = frame["transaction_ts"].isna()
     unknown_customer_mask = ~frame["customer_id"].isin(customers["customer_id"])
     unknown_product_mask = ~frame["product_id"].isin(products["product_id"])
@@ -35,6 +51,13 @@ def validate_transactions(
         "invalid_quantity": invalid_quantity_mask,
         "invalid_price": invalid_price_mask,
         "invalid_timestamp": invalid_timestamp_mask,
+        "invalid_discount": ~frame["discount_pct"].between(0, 1),
+        "invalid_return_flag": ~frame["returned"]
+        .map(lambda value: isinstance(value, (bool, np.bool_)))
+        .astype(bool),
+        "invalid_sales_channel": ~frame["sales_channel"]
+        .map(lambda value: isinstance(value, str) and bool(value.strip()))
+        .astype(bool),
         "unknown_customer": unknown_customer_mask & ~null_id_mask,
         "unknown_product": unknown_product_mask & ~null_id_mask,
     }
