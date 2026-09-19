@@ -52,7 +52,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify Kafka delivery, Spark aggregates and checkpoint recovery
-        run: docker compose --profile streaming run -T --build --rm streaming-test
+        run: |
+          # Keep the bind-mount parent owned by the runner so it can write broker.log.
+          mkdir -p data/streaming-evidence
+          docker compose --profile streaming run -T --build --rm streaming-test
       - name: Capture broker logs
         if: always()
         run: |
