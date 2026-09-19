@@ -43,3 +43,29 @@ jobs:
         env:
           MERCHMIND_POSTGRES_DSN: postgresql://merchmind:merchmind@localhost:5432/merchmind
         run: python -m merchmind.warehouse --data-dir /tmp/merchmind-ci
+
+  streaming:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: merchmind-streaming-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Kafka delivery, Spark aggregates and checkpoint recovery
+        run: docker compose --profile streaming run -T --build --rm streaming-test
+      - name: Capture broker logs
+        if: always()
+        run: |
+          mkdir -p data/streaming-evidence
+          docker compose logs kafka > data/streaming-evidence/broker.log 2>&1
+      - name: Upload streaming execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: streaming-evidence
+          path: |
+            data/streaming-evidence/**/*.json
+            data/streaming-evidence/**/*.log
+      - name: Stop the isolated test stack
+        if: always()
+        run: docker compose --profile streaming down --volumes

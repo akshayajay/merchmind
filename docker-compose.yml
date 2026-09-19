@@ -65,11 +65,86 @@ services:
       - --reserve-memory=0M
       - --node-id=0
       - --check=false
-      - --kafka-addr=0.0.0.0:9092
-      - --advertise-kafka-addr=kafka:9092
+      - --kafka-addr=internal://0.0.0.0:29092,external://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://kafka:29092,external://127.0.0.1:9092
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info", "-X", "brokers=localhost:29092"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - kafka-data:/var/lib/redpanda/data
+
+  kafka-init:
+    image: redpandadata/redpanda:v24.3.5
+    profiles: [streaming]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -ec
+      - >-
+        rpk topic describe retail-transactions -X brokers=kafka:29092 >/dev/null 2>&1 ||
+        rpk topic create retail-transactions --partitions 3 --replicas 1 -X brokers=kafka:29092
+
+  replay:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    profiles: [streaming]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      pipeline:
+        condition: service_completed_successfully
+    command: [python3, -m, merchmind.streaming, --bootstrap-servers, "kafka:29092", --events-per-second, "0"]
+    volumes:
+      - merchmind-data:/app/data:ro
+
+  spark:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    profiles: [streaming]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    command:
+      - python3
+      - scripts/run_stream.py
+      - --bootstrap-servers
+      - kafka:29092
+      - --output
+      - /app/stream-data/output
+      - --checkpoint
+      - /app/stream-data/checkpoints
+    volumes:
+      - stream-data:/app/stream-data
+      - spark-ivy:/tmp/merchmind-ivy
+
+  streaming-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    profiles: [streaming]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      MERCHMIND_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      RUN_KAFKA_INTEGRATION: "1"
+      STREAMING_EVIDENCE_DIR: /app/evidence
+    command: [python3, -m, pytest, tests/integration, --no-cov, -v, -s]
+    volumes:
+      - spark-ivy:/tmp/merchmind-ivy
+      - ./data/streaming-evidence:/app/evidence
 
 volumes:
   merchmind-data:
   postgres-data:
+  kafka-data:
+  stream-data:
+  spark-ivy:

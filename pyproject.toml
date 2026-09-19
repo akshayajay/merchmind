@@ -33,6 +33,9 @@ dev = [
 streaming = [
   "confluent-kafka>=2.6,<4",
 ]
+spark = [
+  "pyspark==4.0.1",
+]
 cloud = [
   "boto3>=1.35,<2",
 ]
@@ -49,13 +52,13 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "-q --cov=merchmind --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
+markers = ["integration: requires a live Kafka broker and Spark 4.0.1"]
 
 [tool.coverage.run]
 omit = [
   "*/__main__.py",
   "*/cli.py",
   "*/dashboard.py",
-  "*/streaming.py",
   "*/warehouse.py",
 ]
 

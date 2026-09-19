@@ -19,14 +19,16 @@ MERCHMIND turns noisy transaction, customer, product, public-company, and macroe
 
 ```mermaid
 flowchart LR
-    A["Transactions, products, customers"] --> B["Bronze: immutable Parquet"]
-    P["SEC and BLS public APIs"] --> B
-    K["Kafka-compatible event stream"] --> S["Spark Structured Streaming"]
-    S --> B
+    A["Transactions, products, customers"] --> B["Bronze: source Parquet"]
     B --> Q{"Data contracts"}
     Q -->|valid| C["Silver: conformed facts and dimensions"]
     Q -->|invalid| X["Quarantine and quality report"]
     C --> G["Gold: KPIs, RFM, product velocity, market pulse, forecasts"]
+    C --> R["Replay validated transactions"]
+    R --> K["Kafka-compatible event stream"]
+    K --> S["Spark Structured Streaming"]
+    S --> RAW["Raw event log with Kafka offsets"]
+    S --> W["Five-minute channel aggregates"]
     G --> API["FastAPI"]
     G --> UI["Streamlit and Plotly"]
     G --> ATH["S3, Glue, Athena on AWS"]
@@ -74,7 +76,7 @@ The Compose environment also loads the conformed tables into PostgreSQL. `sql/po
 
 | Layer | Output | Grain and purpose |
 |---|---|---|
-| Bronze | `transactions`, `products`, `customers` | Source-shaped, immutable inputs |
+| Bronze | `transactions`, `products`, `customers` | Source-shaped demo inputs (replaced on rerun) |
 | Bronze | `company_financials`, `macro_indicators` | Quarterly company and monthly market signals |
 | Silver | `fact_transactions` | Valid transaction line after contract checks |
 | Silver | `dim_products`, `dim_customers` | Conformed descriptive entities |
@@ -111,15 +113,45 @@ The SEC requires an identifying user agent containing contact information. Crede
 
 ## Streaming path
 
-Install the optional producer dependency and start the local broker:
+The streaming path replays validated Silver transactions through a local **Redpanda Kafka-compatible broker** into **Spark 4.0.1 Structured Streaming**. It writes raw Kafka envelopes (including topic, partition and offset) and five-minute channel aggregates to Parquet, with separate durable checkpoints. This runs alongside the pandas batch pipeline; it does not replace the batch Silver/Gold transformations or establish an AWS deployment.
+
+**Verified locally on September 19, 2026:** 49,400 broker-confirmed events consumed across three partitions; finalized window totals reconciled against batch calculations. The real-broker integration test passed on the host and in Docker, including checkpoint restarts. [Execution evidence and limits](docs/streaming.md).
+
+With Docker Desktop or Docker Engine + Compose running:
 
 ```bash
-pip install -e '.[streaming]'
-docker compose up -d kafka
-python -m merchmind.streaming --input data/silver/fact_transactions.parquet
+# Real integration test: broker acknowledgements, Spark outputs, malformed/late
+# events, return revenue, restart with new events, and restart without duplicates.
+make streaming-test
+
+# Generate the demo, create the topic and replay Silver rows (broker confirmed).
+docker compose --profile streaming run -T --build --rm replay
+
+# Consume retained events continuously; startingOffsets defaults to earliest.
+docker compose --profile streaming up --build spark
 ```
 
-`jobs/spark/transaction_stream.py` consumes those events with Spark Structured Streaming, applies a watermark, and writes five-minute channel aggregates plus checkpoints. Redpanda supplies a lightweight Kafka-compatible local broker; the optional Terraform module provisions Amazon MSK Serverless for the cloud version.
+The first run downloads container images and the matching Spark Kafka connector. Evidence from the integration test is saved under `data/streaming-evidence/`; CI uploads its JSON reports and Spark logs. The test uses a unique topic and removes only that topic when finished.
+
+Broker listeners are `127.0.0.1:9092` for host programs and `kafka:29092` for Compose services. The host port binds only to loopback. The local broker is single-node and has no authentication: it is a development setup, not a production deployment.
+
+For a host-native producer and Spark runtime (Python 3.11+ and Java 17 or 21):
+
+```bash
+pip install -e '.[dev,streaming,spark]'
+merchmind run --transactions 50000 --customers 2500 --products 500
+docker compose --profile streaming run -T --rm kafka-init
+python -m merchmind.streaming --events-per-second 0
+python scripts/run_stream.py --bootstrap-servers 127.0.0.1:9092 \
+  --output data/streaming/output --checkpoint data/streaming/checkpoints \
+  --available-now --progress-report data/streaming/progress.json
+```
+
+`--available-now` drains currently available Kafka offsets and exits. Omit it for continuous operation. Restart with the same output, topic and checkpoint paths to resume saved offsets. A new checkpoint uses `--starting-offsets earliest` by default; `latest` is available explicitly. Checkpoints from the old single-output job are incompatible: use a new output/checkpoint root when migrating.
+
+**Event-time behavior:** aggregates are appended only after the ten-minute watermark passes a window's end. The newest windows remain pending until later events advance event time—even with `--available-now`. Raw events are written immediately, including malformed or too-late messages. Basic field checks protect aggregates; reference validation and transaction-ID deduplication occur in the upstream Silver batch, not this consumer. Replaying the same input again creates new Kafka events; producer idempotence prevents transport retries from duplicating messages, not intentional replays. Stream revenue reverses returned lines and matches the batch convention; units count transaction quantities in both paths.
+
+See [streaming verification](docs/streaming.md) for output inspection, recovery and test evidence.
 
 ## Engineering workflow
 

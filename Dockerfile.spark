@@ -1,0 +1,21 @@
+FROM apache/spark:4.0.1-python3 AS spark-distribution
+FROM python:3.11-slim-bookworm
+
+# Explicit Python >=3.11 for the app, Java 17 for Spark 4.0.1.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless procps \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=spark-distribution /opt/spark /opt/spark
+WORKDIR /app
+ENV PATH="/opt/spark/bin:${PATH}" \
+    SPARK_HOME=/opt/spark \
+    PYTHONUNBUFFERED=1 \
+    PYSPARK_PYTHON=python3 \
+    MERCHMIND_DATA_DIR=/app/data
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN python3 -m pip install --no-cache-dir '.[dev,streaming]'
+COPY jobs ./jobs
+COPY scripts ./scripts
+COPY tests ./tests
+CMD ["python3", "scripts/run_stream.py", "--help"]

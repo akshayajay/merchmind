@@ -14,6 +14,8 @@ data/silver/
 data/gold/
 data/reports/
 data/checkpoints/
+data/streaming-evidence/
+data/streaming/
 !data/.gitkeep
 
 # Terraform state and local plans

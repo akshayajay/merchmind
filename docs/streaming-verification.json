@@ -1,0 +1,62 @@
+{
+  "verified_on": "2026-09-19",
+  "base_commit": "4672a98203027fe9286cdfe88ac1ee11660c1348",
+  "description": "Observed local execution after implementing the Kafka/Spark changes; not a cloud or throughput benchmark.",
+  "integration_environment": {
+    "broker": "Redpanda v24.3.5 (Kafka-compatible)",
+    "spark": "4.0.1",
+    "python": "3.11.16",
+    "java": "17",
+    "runner": "Docker, Linux arm64"
+  },
+  "integration": {
+    "spark_version": "4.0.1",
+    "topic": "merchmind-test-2dc5aa965a114fef94deff19d9720f66",
+    "broker_confirmed_messages": 9,
+    "raw_rows": 9,
+    "finalized_aggregate_rows": 3,
+    "finalized_net_revenue": 26.0,
+    "malformed_or_invalid_messages": 3,
+    "late_rows_dropped_from_aggregates": 1,
+    "checkpoint_restart_new_rows": 2,
+    "idle_restart_new_rows": 0,
+    "checks_passed": true
+  },
+  "full_demo": {
+    "spark_version": "4.0.1",
+    "topic": "merchmind-demo-82b633686d874b8a975e6dba7203e41a",
+    "broker_confirmed_events": 49400,
+    "raw_events": 49400,
+    "partitions": 3,
+    "finalized_windows": 44687,
+    "finalized_transactions": 49398,
+    "pending_transactions": 2,
+    "watermark": "2025-12-30 22:36:00+00:00",
+    "batch_reconciliation_passed": true
+  },
+  "full_demo_environment": {
+    "runner": "macOS arm64 host + Docker broker",
+    "spark": "4.0.1",
+    "java": "20.0.2",
+    "spark_python": "3.13",
+    "producer_python": "3.12.5"
+  },
+  "limits": [
+    "Local two-thread Spark execution, not a multi-node scale benchmark.",
+    "Checkpoint tests cover graceful restarts, not crash injection.",
+    "No AWS deployment is claimed.",
+    "Verification topics were deleted after assertions; output and progress artifacts were retained locally."
+  ],
+  "compose_demo": {
+    "raw_events": 24700,
+    "partitions": 3,
+    "finalized_windows": 23483,
+    "finalized_transactions": 24697,
+    "pending_transactions": 3,
+    "spark_version": "4.0.1",
+    "verified_commands": [
+      "docker compose --profile streaming run -T --build --rm replay",
+      "docker compose --profile streaming run -T --build --rm spark python3 scripts/run_stream.py --bootstrap-servers kafka:29092 --output /app/stream-data/output --checkpoint /app/stream-data/checkpoints --available-now --progress-report /app/stream-data/progress.json"
+    ]
+  }
+}
