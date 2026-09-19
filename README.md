@@ -29,12 +29,14 @@ flowchart LR
     K --> S["Spark Structured Streaming"]
     S --> RAW["Raw event log with Kafka offsets"]
     S --> W["Five-minute channel aggregates"]
+    RAW --> LIVE["Validate, deduplicate and publish serving snapshot"]
+    LIVE --> G
     G --> API["FastAPI"]
     G --> UI["Streamlit and Plotly"]
-    G --> ATH["S3, Glue, Athena on AWS"]
+    G -. "Undeployed IaC design" .-> ATH["S3, Glue, Athena on AWS"]
 ```
 
-The local implementation uses Parquet so anyone can run it without a cloud bill. Terraform maps the same medallion layers to encrypted, versioned S3 storage, a Glue catalog, Athena, EMR Serverless, CloudWatch, and an optional MSK Serverless stream.
+The verified implementation runs locally with Parquet and Docker, without a cloud bill. AWS resources have not been deployed or verified. Terraform maps the same medallion layers to encrypted, versioned S3 storage, a Glue catalog, Athena, EMR Serverless, CloudWatch, and an optional MSK Serverless stream.
 
 ## Reference run
 
@@ -84,7 +86,7 @@ The Compose environment also loads the conformed tables into PostgreSQL. `sql/po
 | Gold | `product_performance` | Product velocity, margin, returns, and slow-mover flags |
 | Gold | `customer_rfm` | Customer-level behavioral value and lifecycle segment |
 | Gold | `market_pulse` | Company-quarter inventory stress with macro context |
-| Gold | `category_forecast` | Category-day 28-day unit forecast and 80% interval |
+| Gold | `category_forecast` | Category-day 28-day unit forecast and nominal 80% band |
 
 Every run also writes a quality report and a manifest containing row counts, layer contents, configuration, runtime, and generation timestamp.
 
@@ -113,9 +115,9 @@ The SEC requires an identifying user agent containing contact information. Crede
 
 ## Streaming path
 
-The streaming path replays validated Silver transactions through a local **Redpanda Kafka-compatible broker** into **Spark 4.0.1 Structured Streaming**. It writes raw Kafka envelopes (including topic, partition and offset) and five-minute channel aggregates to Parquet, with separate durable checkpoints. This runs alongside the pandas batch pipeline; it does not replace the batch Silver/Gold transformations or establish an AWS deployment.
+The streaming path replays validated Silver transactions through a local **Redpanda Kafka-compatible broker** into **Spark 4.0.1 Structured Streaming**. It writes raw Kafka envelopes (including topic, partition and offset) and five-minute channel aggregates to Parquet, with separate durable checkpoints. A live publisher reads committed raw events, validates references and business IDs, rebuilds all six Gold products, and atomically publishes a serving snapshot. FastAPI reads the latest snapshot per request; Streamlit refreshes every five seconds. Gold computation remains pandas-based.
 
-**Verified locally on September 19, 2026:** 49,400 broker-confirmed events consumed across three partitions; finalized window totals reconciled against batch calculations. The real-broker integration test passed on the host and in Docker, including checkpoint restarts. [Execution evidence and limits](docs/streaming.md).
+**Verified locally on September 19, 2026:** 49,400 broker-confirmed events consumed across three partitions; finalized window totals reconciled against batch calculations. The real-broker integration test passed on the host and in Docker, including checkpoint restarts and forced-driver-crash recovery. A separate three-broker/two-worker lab reconciled 30,001 events and acknowledged 10,000 while a partition leader was down. [Execution evidence and limits](docs/validation.md).
 
 With Docker Desktop or Docker Engine + Compose running:
 
@@ -128,7 +130,7 @@ make streaming-test
 docker compose --profile streaming run -T --build --rm replay
 
 # Consume retained events continuously; startingOffsets defaults to earliest.
-docker compose --profile streaming up --build spark
+docker compose --profile streaming up --build spark refresh api dashboard
 ```
 
 The first run downloads container images and the matching Spark Kafka connector. Evidence from the integration test is saved under `data/streaming-evidence/`; CI uploads its JSON reports and Spark logs. The test uses a unique topic and removes only that topic when finished.
@@ -149,9 +151,19 @@ python scripts/run_stream.py --bootstrap-servers 127.0.0.1:9092 \
 
 `--available-now` drains currently available Kafka offsets and exits. Omit it for continuous operation. Restart with the same output, topic and checkpoint paths to resume saved offsets. A new checkpoint uses `--starting-offsets earliest` by default; `latest` is available explicitly. Checkpoints from the old single-output job are incompatible: use a new output/checkpoint root when migrating.
 
-**Event-time behavior:** aggregates are appended only after the ten-minute watermark passes a window's end. The newest windows remain pending until later events advance event time—even with `--available-now`. Raw events are written immediately, including malformed or too-late messages. Basic field checks protect aggregates; reference validation and transaction-ID deduplication occur in the upstream Silver batch, not this consumer. Replaying the same input again creates new Kafka events; producer idempotence prevents transport retries from duplicating messages, not intentional replays. Stream revenue reverses returned lines and matches the batch convention; units count transaction quantities in both paths.
+**Event-time behavior:** aggregates are appended only after the ten-minute watermark passes a window's end. The newest windows remain pending until later events advance event time—even with `--available-now`. Raw events are written immediately, including malformed or too-late messages. Basic field checks protect aggregates; reference validation and transaction-ID deduplication occur in Silver and the live serving publisher, not in the five-minute Spark aggregates. Replaying the same input again creates new Kafka events; producer idempotence prevents transport retries from duplicating messages, not intentional replays. Stream revenue reverses returned lines and matches the batch convention; units count transaction quantities in both paths.
 
 See [streaming verification](docs/streaming.md) for output inspection, recovery and test evidence.
+
+## Forecast validation and recovery checks
+
+```bash
+merchmind backtest --data-dir data
+# Optional local fault-injection lab: Docker with about 8 GB RAM, no AWS.
+python scripts/verify_resilience.py
+```
+
+The rolling backtest uses 23 non-overlapping 28-day holdouts across eight categories in the default synthetic dataset. Forecast WAPE is **29.40%**, compared with **28.78%** for a trailing 28-day mean and **39.25%** for last-week demand. The nominal 80% band covered **75.21%** of holdouts. These results do not establish real-retailer accuracy or calibrated uncertainty. [Validation details and reproducible evidence](docs/validation.md).
 
 ## Engineering workflow
 
@@ -165,13 +177,12 @@ GitHub Actions repeats linting and tests, then exercises a 5,000-transaction pip
 
 ## Cloud deployment
 
-The Terraform is intentionally safe by default: remote storage, catalog, Athena, EMR Serverless, and observability are created, while MSK Serverless is opt-in because it can incur meaningful cost.
+**Deferred to avoid cloud charges.** Terraform definitions exist, but no AWS deployment has been verified. Applying them can incur charges even with MSK disabled. The local validation workflow needs no AWS account.
 
 ```bash
 cd infrastructure/terraform
 terraform init
 terraform plan -var='project_name=merchmind-dev'
-terraform apply -var='project_name=merchmind-dev'
 ```
 
 Review the plan and your AWS account's current pricing before applying. Terraform state may contain infrastructure metadata and must not be committed.

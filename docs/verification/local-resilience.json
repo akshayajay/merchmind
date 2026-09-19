@@ -1,0 +1,16 @@
+{
+  "raw_events": 30001,
+  "finalized_transactions": 30000,
+  "net_revenue": 600000,
+  "replicas": 3,
+  "min_in_sync_replicas": 2,
+  "brokers": 3,
+  "worker_executors": 2,
+  "completed_tasks_per_worker": [
+    4,
+    6
+  ],
+  "acknowledged_while_leader_down": 10000,
+  "scope": "One local Docker host; not a production capacity benchmark",
+  "checks_passed": true
+}

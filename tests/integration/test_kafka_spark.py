@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from merchmind.live import committed_files, refresh_from_stream
+from merchmind.pipeline import run_pipeline
 from merchmind.streaming import replay_transactions
 
 pytestmark = [
@@ -155,17 +159,95 @@ def test_kafka_spark_delivery_aggregates_and_checkpoint_restart(tmp_path):
         assert len(pd.read_parquet(directory / "output/aggregates")) == 3
         for name in first["queries"]:
             assert second["queries"][name]["id"] == third["queries"][name]["id"]
+
+        # Kill a running driver after a file commit, then recover both queries from
+        # durable checkpoints. Read only committed files: a kill may leave orphans.
+        pd.DataFrame([transaction("crash-sale", 50, price=3.0)]).to_parquet(parquet)
+        assert replay_transactions(parquet, broker, topic, 0) == 1
+        command = [
+            sys.executable,
+            str(ROOT / "scripts/run_stream.py"),
+            "--bootstrap-servers",
+            broker,
+            "--topic",
+            topic,
+            "--output",
+            str(directory / "output"),
+            "--checkpoint",
+            str(directory / "checkpoints"),
+        ]
+        with (directory / "killed-spark.log").open("w") as log:
+            process = subprocess.Popen(
+                command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
+            )
+            try:
+                deadline = time.monotonic() + 180
+                while time.monotonic() < deadline:
+                    assert process.poll() is None, "Spark exited before crash injection"
+                    committed = committed_files(directory / "output/raw")
+                    if sum(len(pd.read_parquet(path)) for path in committed) == 10:
+                        break
+                    time.sleep(1)
+                else:
+                    pytest.fail("Timed out waiting for pre-crash file commit")
+            finally:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=30)
+        assert process.returncode == -signal.SIGKILL
+        marker = transaction("post-crash", 59, price=4.0)
+        marker["transaction_ts"] = "2026-01-01T13:20:00+00:00"
+        pd.DataFrame([marker]).to_parquet(parquet)
+        assert replay_transactions(parquet, broker, topic, 0) == 1
+        recovered = run_spark(broker, topic, directory, "crash-recovery")
+        raw = pd.concat(
+            [pd.read_parquet(path) for path in committed_files(directory / "output/raw")]
+        )
+        aggregates = pd.concat(
+            [pd.read_parquet(path) for path in committed_files(directory / "output/aggregates")]
+        )
+        assert len(raw) == 11
+        assert not raw.duplicated(["topic", "partition", "offset"]).any()
+        assert aggregates.transactions.sum() == 6
+        assert aggregates.net_revenue.sum() == pytest.approx(31.0)
+        for name in first["queries"]:
+            assert recovered["queries"][name]["id"] == first["queries"][name]["id"]
+
+        # Exercise real committed Spark files all the way through Gold and FastAPI.
+        serving = directory / "serving"
+        baseline = run_pipeline(serving, transactions=1000, customers=100, products=30)
+        for table, column, identifier in [
+            ("dim_customers", "customer_id", "C1"),
+            ("dim_products", "product_id", "P1"),
+        ]:
+            path = serving / "silver" / f"{table}.parquet"
+            frame = pd.read_parquet(path)
+            extra = frame.iloc[[0]].copy()
+            extra[column] = identifier
+            pd.concat([frame, extra], ignore_index=True).to_parquet(path)
+        live = refresh_from_stream(serving, directory / "output/raw")
+        assert live["new_transactions"] == 8  # includes the valid late arrival
+        assert live["quarantined_events"] == 3
+        from fastapi.testclient import TestClient
+
+        from merchmind.api import create_app
+
+        client = TestClient(create_app(serving))
+        assert client.get("/v1/kpis").json()["orders"] == baseline.clean_rows + 8
+        assert refresh_from_stream(serving, directory / "output/raw") is None
         evidence = {
             "spark_version": first["spark_version"],
             "topic": topic,
-            "broker_confirmed_messages": 9,
-            "raw_rows": 9,
-            "finalized_aggregate_rows": 3,
-            "finalized_net_revenue": 26.0,
+            "broker_confirmed_messages": 11,
+            "raw_rows": 11,
+            "finalized_aggregate_rows": len(aggregates),
+            "finalized_net_revenue": 31.0,
             "malformed_or_invalid_messages": 3,
             "late_rows_dropped_from_aggregates": dropped,
             "checkpoint_restart_new_rows": 2,
             "idle_restart_new_rows": 0,
+            "sigkill_recovery_passed": True,
+            "live_gold_new_transactions": live["new_transactions"],
             "checks_passed": True,
         }
         (directory / "summary.json").write_text(json.dumps(evidence, indent=2) + "\n")

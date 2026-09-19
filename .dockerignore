@@ -14,3 +14,8 @@ data/streaming
 data/checkpoints
 infrastructure/terraform/.terraform
 infrastructure/terraform/*.tfstate*
+
+# Local validation and serving snapshots
+data/live/
+data/resilience-evidence*/
+data/ui-stream/

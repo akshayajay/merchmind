@@ -16,9 +16,9 @@ Recency, frequency, and monetary values are ranked into quartiles. Rules then ma
 
 ## Demand forecast
 
-The baseline predicts each future date using mean observed units for the matching weekday over the trailing 84 days. An 80% interval uses 1.28 times weekday-level historical standard deviation and clips negative values to zero.
+The baseline predicts each future date using mean observed units for the matching weekday over the trailing 84 days. A nominal, uncalibrated 80% band uses 1.28 times weekday-level historical standard deviation and clips negative values to zero.
 
-This baseline is deliberately interpretable and leakage-resistant. The correct next step is rolling-origin backtesting against alternatives, evaluated with weighted absolute percentage error and bias at category and total levels. Promotions, price, holidays, inventory availability, and launch calendars are valuable future covariates.
+Rolling-origin backtesting now compares this baseline with last-week demand and a trailing 28-day mean. Each fold uses only earlier history, followed by a disjoint 28-day holdout; missing category-days are zero demand. Reports contain per-category and pooled category-day MAE, RMSE, WAPE, signed bias, and band coverage. The pooled score is not an error on summed total demand. See [measured results](validation.md); the weekday model did not beat the 28-day mean on the synthetic dataset. Promotions, price, holidays, inventory availability, and launch calendars are valuable future covariates.
 
 ## Company inventory stress
 

@@ -2,7 +2,7 @@
 
 Run through scripts/run_stream.py to include the matching Kafka connector.
 Raw events include malformed/late messages; aggregates apply basic field checks.
-The pandas Silver/Gold pipeline remains a separate batch demo.
+The live publisher can rebuild serving Gold from committed raw events.
 """
 
 from __future__ import annotations
@@ -70,6 +70,23 @@ def aggregate_events(raw: DataFrame) -> DataFrame:
     )
 
 
+def executor_summary(spark: SparkSession) -> list[dict]:
+    """Record completed work, not only registered worker processes (Spark 4.0.1)."""
+    records = []
+    executors = spark.sparkContext._jsc.sc().statusStore().executorList(True).iterator()
+    while executors.hasNext():
+        executor = executors.next()
+        records.append(
+            {
+                "id": executor.id(),
+                "host_port": executor.hostPort(),
+                "completed_tasks": executor.completedTasks(),
+                "failed_tasks": executor.failedTasks(),
+            }
+        )
+    return records
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bootstrap-servers", required=True)
@@ -132,6 +149,8 @@ def main() -> None:
             args.progress_report.parent.mkdir(parents=True, exist_ok=True)
             report = {
                 "spark_version": spark.version,
+                "master": spark.sparkContext.master,
+                "executors": executor_summary(spark),
                 "topic": args.topic,
                 "queries": {
                     query.name: {

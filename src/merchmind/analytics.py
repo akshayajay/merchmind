@@ -146,8 +146,11 @@ def build_market_pulse(
 def build_category_forecast(daily_category: pd.DataFrame, horizon: int = 28) -> pd.DataFrame:
     """Create a transparent weekday seasonal-naive forecast with uncertainty bands."""
     forecasts: list[pd.DataFrame] = []
+    calendar = pd.date_range(daily_category.date.min(), daily_category.date.max(), freq="D")
     for category, category_frame in daily_category.groupby("category"):
-        indexed = category_frame.set_index("date")["units"].asfreq("D", fill_value=0).astype(float)
+        indexed = (
+            category_frame.set_index("date")["units"].reindex(calendar, fill_value=0).astype(float)
+        )
         last_date = indexed.index.max()
         future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=horizon, freq="D")
         history = indexed.tail(84)

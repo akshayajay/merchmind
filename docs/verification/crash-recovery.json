@@ -1,0 +1,15 @@
+{
+  "spark_version": "4.0.1",
+  "topic": "merchmind-test-d57e73e2b59c4213abe3e38848f4c76f",
+  "broker_confirmed_messages": 11,
+  "raw_rows": 11,
+  "finalized_aggregate_rows": 5,
+  "finalized_net_revenue": 31.0,
+  "malformed_or_invalid_messages": 3,
+  "late_rows_dropped_from_aggregates": 1,
+  "checkpoint_restart_new_rows": 2,
+  "idle_restart_new_rows": 0,
+  "sigkill_recovery_passed": true,
+  "live_gold_new_transactions": 8,
+  "checks_passed": true
+}

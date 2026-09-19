@@ -125,6 +125,18 @@ services:
       - stream-data:/app/stream-data
       - spark-ivy:/tmp/merchmind-ivy
 
+  refresh:
+    build: .
+    profiles: [streaming]
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    command: [python, -m, merchmind.live, --raw-dir, /app/stream-data/output/raw, --watch]
+    restart: on-failure
+    volumes:
+      - merchmind-data:/app/data
+      - stream-data:/app/stream-data:ro
+
   streaming-test:
     build:
       context: .
