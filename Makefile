@@ -1,4 +1,4 @@
-.PHONY: install format lint test demo api dashboard compose
+.PHONY: install format lint test demo api dashboard compose streaming-test
 
 install:
 	pip install -e '.[dev]'
@@ -25,3 +25,6 @@ dashboard:
 
 compose:
 	docker compose up --build
+
+streaming-test:
+	docker compose --profile streaming run -T --build --rm streaming-test

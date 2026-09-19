@@ -9,5 +9,8 @@ data/bronze
 data/silver
 data/gold
 data/reports
+data/streaming-evidence
+data/streaming
+data/checkpoints
 infrastructure/terraform/.terraform
 infrastructure/terraform/*.tfstate*
