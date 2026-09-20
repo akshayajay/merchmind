@@ -19,3 +19,6 @@ infrastructure/terraform/*.tfstate*
 data/live/
 data/resilience-evidence*/
 data/ui-stream/
+data/closes/
+data/inventory/
+data/airflow-evidence/

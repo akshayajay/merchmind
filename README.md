@@ -1,199 +1,167 @@
 # MERCHMIND
 
-Cloud-native fashion retail intelligence for deciding **what to buy, what to mark down, and where inventory risk is building**.
+[![CI](https://github.com/akshayajay/merchmind/actions/workflows/ci.yml/badge.svg)](https://github.com/akshayajay/merchmind/actions/workflows/ci.yml)
 
-MERCHMIND turns noisy transaction, customer, product, public-company, and macroeconomic data into a governed analytical layer for merchandisers and market analysts. The repository is deliberately end to end: a reproducible data generator, Bronze/Silver/Gold pipeline, quality quarantine, customer and product analytics, demand forecasts, public-data connectors, Kafka/Spark streaming, API, dashboard, tests, containers, CI, and AWS infrastructure as code.
+**A retail data platform for streaming sales, tracking product stock, and reconciling daily reports.**
 
-> The demo uses synthetic retailers and customers. It contains no scraped, proprietary, or personally identifiable data. Optional SEC and BLS adapters make the boundary between demo data and real public data explicit.
+MERCHMIND combines Kafka-compatible ingestion, Apache Spark Structured Streaming, Apache Airflow workflows, and a FastAPI/Streamlit application. It answers what sold, which products are running low, and whether daily reported transactions and revenue match the source records—even after duplicates, late arrivals, or interrupted jobs.
 
-## What it answers
+The reproducible demo uses **synthetic retail data** and runs locally in Docker. Its broker is **Redpanda, implementing the Kafka protocol**. Spark handles streaming ingestion and window aggregation; pandas handles analytical tables, reconciliation, and stock projection. AWS infrastructure is an undeployed design. Hadoop/HDFS/YARN are not implemented.
 
-- Which categories create revenue and gross profit, and how are returns and markdowns changing them?
-- Which products are slow movers relative to their own category velocity?
-- Which customer cohorts are loyal, at risk, newly acquired, or still developing?
-- What is the next 28 days of unit demand by category, with an interpretable uncertainty range?
-- Which public fashion companies show inventory growth outpacing sales and margin performance?
-- Did bad source records enter decision-facing tables, or were they quarantined with an audit trail?
+## Platform capabilities
+
+| Capability | Implementation |
+|---|---|
+| Event ingestion | Acknowledged Kafka producers, transaction/inventory topics, durable Spark checkpoints |
+| Streaming analytics | Raw Parquet audit log and five-minute channel windows with a ten-minute watermark |
+| Live serving | Validation, business-ID deduplication, atomic analytical snapshots, dashboard refresh |
+| Inventory | Opening balances, receipts, adjustments, sales, restockable returns, low-stock flags |
+| Daily close | Airflow quality checks, source-to-serving reconciliation, forecast refresh, atomic publication |
+| Recovery and backfills | Checkpoint recovery, task retries, historical reruns, last-successful-report preservation |
+| Retail analytics | Category revenue, product velocity, customer RFM, company stress, demand forecasts |
+| SQL warehouse | Optional PostgreSQL facts/dimensions, constraints, indexes, and window-function views |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A["Transactions, products, customers"] --> B["Bronze: source Parquet"]
-    B --> Q{"Data contracts"}
-    Q -->|valid| C["Silver: conformed facts and dimensions"]
-    Q -->|invalid| X["Quarantine and quality report"]
-    C --> G["Gold: KPIs, RFM, product velocity, market pulse, forecasts"]
-    C --> R["Replay validated transactions"]
-    R --> K["Kafka-compatible event stream"]
+    TX["Purchases and returns"] --> K["Kafka-compatible broker · Redpanda"]
+    INV["Inventory events"] --> K
     K --> S["Spark Structured Streaming"]
-    S --> RAW["Raw event log with Kafka offsets"]
-    S --> W["Five-minute channel aggregates"]
-    RAW --> LIVE["Validate, deduplicate and publish serving snapshot"]
-    LIVE --> G
-    G --> API["FastAPI"]
-    G --> UI["Streamlit and Plotly"]
-    G -. "Undeployed IaC design" .-> ATH["S3, Glue, Athena on AWS"]
+    S --> RAW["Committed raw Parquet + checkpoints"]
+    S --> WIN["Provisional five-minute sales windows"]
+    B["Bronze source data"] --> BASE["Validated baseline facts and dimensions"]
+    BASE --> LIVE["Deduplicated live analytical snapshots"]
+    RAW --> LIVE
+    RAW --> STOCK["Product stock projection"]
+    LIVE --> STOCK
+    B --> AIR["Airflow daily close"]
+    RAW --> AIR
+    LIVE --> AIR
+    AIR --> CLOSE["Quality → reconcile → forecast → publish"]
+    LIVE --> APP["FastAPI + Streamlit"]
+    STOCK --> APP
+    CLOSE --> APP
+    BASE --> PG["Optional PostgreSQL warehouse"]
 ```
 
-The verified implementation runs locally with Parquet and Docker, without a cloud bill. AWS resources have not been deployed or verified. Terraform maps the same medallion layers to encrypted, versioned S3 storage, a Glue catalog, Athena, EMR Serverless, CloudWatch, and an optional MSK Serverless stream.
+The daily close uses **committed raw history**, so late transactions can be included when their business date is rerun. Finalized streaming windows remain provisional analytical outputs.
 
-## Reference run
+## Run the full demo
 
-A local 50,000-transaction run with 2,500 customers and 500 products produced 50,200 source rows after injected duplicates. It admitted 49,400 trusted rows, quarantined 800 contract failures, and built six Gold data products in 0.29 seconds (runtime varies by machine). That is a 98.41% measured data-quality pass rate; the analytical outputs contained 110 slow-mover flags and 224 category forecast rows.
+Install Docker Desktop or Docker Engine with Compose. **8 GB of Docker memory is a practical starting point** for Airflow, two Spark consumers, and serving services. First setup downloads images, Python packages, and the Spark Kafka connector.
 
-## Quick start
+```bash
+git clone https://github.com/akshayajay/merchmind.git
+cd merchmind
+make retail-demo
+```
 
-Requires Python 3.11+.
+| Service | Local URL |
+|---|---|
+| Dashboard | [localhost:8501](http://localhost:8501) |
+| API documentation | [localhost:8000/docs](http://localhost:8000/docs) |
+| Airflow | [localhost:8080](http://localhost:8080) |
+
+The demo generates 25,000 transactions before injecting quality problems, seeds 500 opening units per product, and replays validated transactions and inventory events. Replaying baseline transactions exercises ingestion without inflating served revenue. The dashboard refreshes every five seconds; processing adds to end-to-end latency.
+
+Airflow's `retail_daily_close` DAG starts paused. Retrieve its generated local login from the service logs, then unpause it in the UI:
+
+```bash
+make retail-logs
+```
+
+Each midnight UTC run closes the **preceding UTC day**. Synthetic sales cover 2024–2025, so current-date closes may be empty. After the initial replay finishes, trigger a historical run with:
+
+```json
+{"business_date": "2025-12-30"}
+```
+
+Use Airflow's Backfill action to rerun a historical range. Successful reports appear in the dashboard and at `/v1/daily-close/YYYY-MM-DD`; stock is available at `/v1/stock`.
+
+```bash
+make retail-status
+make retail-stop       # Preserve data and checkpoints.
+```
+
+The local stack bind-mounts application source read-only. Stop it before regenerating baseline data; never run two writers against the same checkpoints. See the [platform guide](docs/retail-platform.md) and [operations guide](docs/operations.md).
+
+## Smaller Python-only demo
+
+Requires Python 3.11+. This runs batch analytics and the app without Kafka, Spark, or Airflow:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-merchmind run --transactions 50000 --customers 2500 --products 500
-merchmind summary
+make demo
+make api               # Separate terminal: make dashboard
 ```
 
-Launch the two serving surfaces:
+Streamlit Community Cloud can generate this batch demo on first startup; it does not run the Docker streaming/Airflow stack. `docker compose up --build` runs the original batch/application/PostgreSQL setup. Use `make retail-demo` for the full platform.
+
+## Data and correctness
+
+| Layer | Contents |
+|---|---|
+| Bronze | Source transactions, products/customers, company/macro inputs, inventory events; replaced by generator reruns |
+| Silver | Validated transaction lines and conformed dimensions; rejected rows retain reasons |
+| Gold | Category metrics, product performance, customer RFM, market pulse, forecasts, executive KPIs |
+| Live snapshots | Complete analytical outputs exposed through one atomic pointer |
+| Daily closes | Pinned inputs, record/category comparisons, quality evidence, date-bounded forecasts, successful-attempt pointer |
+| Stock snapshots | Per-product quantities; missing inventory means unknown stock, not zero |
+
+Transaction IDs are immutable: baseline records take precedence, followed by the first valid streamed record. An invalid first arrival does not block a later valid event. Inventory IDs ignore exact duplicates and reject conflicting payloads. Returns reverse revenue; the stock demo assumes returned units are restockable. Unit prices are already discounted. See the [data model](docs/data_model.md) and [methodology](docs/methodology.md).
+
+## Verified execution
+
+Recorded local verification on September 20, 2026:
+
+| Check | Observed result |
+|---|---|
+| Application tests | 38 passed; 88.61% coverage |
+| Real broker + Spark | Checkpoint restarts, forced-driver-crash recovery, duplicates, and late arrivals passed |
+| Airflow tasks | Four successful runs; an injected failure exhausted three attempts, preserved the previous close, then recovered |
+| Full-stack scheduler | 24,700 committed stream events; selected day reconciled 33 transactions, 37 units, and $1,564.96 |
+| Live inventory | Duplicate stock adjustment produced one balance change; API and browser showed five units and a low-stock flag |
+
+These are test observations, not throughput or production-availability claims. See the [execution report and machine-readable evidence](docs/verification/retail-platform-validation.md). Older experiments remain separately dated in [validation](docs/validation.md).
 
 ```bash
-uvicorn merchmind.api:app --reload
-streamlit run src/merchmind/dashboard.py
-```
-
-- API documentation: `http://localhost:8000/docs`
-- Dashboard: `http://localhost:8501`
-
-On Streamlit Community Cloud, the dashboard creates the same deterministic 50,000-transaction demo dataset automatically at its first startup; no data files need to be committed.
-
-Or build the pipeline, API, dashboard, and Kafka-compatible broker together:
-
-```bash
-docker compose up --build
-```
-
-The Compose environment also loads the conformed tables into PostgreSQL. `sql/postgres` defines normalized dimensions and a transaction fact with primary/foreign keys, checks, and composite indexes. Its analytical views use `SUM OVER`, `PERCENT_RANK`, and `NTILE` windows for rolling product velocity and RFM segmentation.
-
-## Data products
-
-| Layer | Output | Grain and purpose |
-|---|---|---|
-| Bronze | `transactions`, `products`, `customers` | Source-shaped demo inputs (replaced on rerun) |
-| Bronze | `company_financials`, `macro_indicators` | Quarterly company and monthly market signals |
-| Silver | `fact_transactions` | Valid transaction line after contract checks |
-| Silver | `dim_products`, `dim_customers` | Conformed descriptive entities |
-| Gold | `daily_category_performance` | Date × category merchandising KPIs |
-| Gold | `product_performance` | Product velocity, margin, returns, and slow-mover flags |
-| Gold | `customer_rfm` | Customer-level behavioral value and lifecycle segment |
-| Gold | `market_pulse` | Company-quarter inventory stress with macro context |
-| Gold | `category_forecast` | Category-day 28-day unit forecast and nominal 80% band |
-
-Every run also writes a quality report and a manifest containing row counts, layer contents, configuration, runtime, and generation timestamp.
-
-## Data quality and modeling choices
-
-The generator deliberately injects missing keys, invalid quantities, negative prices, and duplicate transaction IDs. Records that violate contracts never enter Silver: they retain a pipe-delimited rejection reason in the quarantine table. The quality report makes the pass rate and every failure class measurable.
-
-The 28-day baseline uses weekday seasonal behavior from the trailing 84 days. It is transparent enough for a merchandiser to challenge and creates an honest benchmark for later gradient-boosted or hierarchical forecasting. Inventory stress is also interpretable:
-
-```text
-inventory growth YoY − revenue growth YoY − gross-margin change YoY
-```
-
-A high value means inventory is expanding faster than demand while margin is deteriorating—a practical signal to investigate, not a claim of investment advice.
-
-See [methodology](docs/methodology.md), [data model](docs/data_model.md), and [AWS deployment](docs/aws_deployment.md) for the detailed design.
-
-## Public-data adapters
-
-`merchmind.connectors` includes small, testable clients for:
-
-- [SEC EDGAR Company Facts](https://www.sec.gov/edgar/sec-api-documentation), for standardized public-company XBRL facts.
-- [BLS Public Data API](https://www.bls.gov/developers/), for apparel CPI, employment, and related labor-market context.
-
-The SEC requires an identifying user agent containing contact information. Credentials and identifying values belong in environment variables or a secret manager and are never committed. Potential Census retail and licensed trend/search sources are documented as extensions rather than represented as data already present.
-
-## Streaming path
-
-The streaming path replays validated Silver transactions through a local **Redpanda Kafka-compatible broker** into **Spark 4.0.1 Structured Streaming**. It writes raw Kafka envelopes (including topic, partition and offset) and five-minute channel aggregates to Parquet, with separate durable checkpoints. A live publisher reads committed raw events, validates references and business IDs, rebuilds all six Gold products, and atomically publishes a serving snapshot. FastAPI reads the latest snapshot per request; Streamlit refreshes every five seconds. Gold computation remains pandas-based.
-
-**Verified locally on September 19, 2026:** 49,400 broker-confirmed events consumed across three partitions; finalized window totals reconciled against batch calculations. The real-broker integration test passed on the host and in Docker, including checkpoint restarts and forced-driver-crash recovery. A separate three-broker/two-worker lab reconciled 30,001 events and acknowledged 10,000 while a partition leader was down. [Execution evidence and limits](docs/validation.md).
-
-With Docker Desktop or Docker Engine + Compose running:
-
-```bash
-# Real integration test: broker acknowledgements, Spark outputs, malformed/late
-# events, return revenue, restart with new events, and restart without duplicates.
-make streaming-test
-
-# Generate the demo, create the topic and replay Silver rows (broker confirmed).
-docker compose --profile streaming run -T --build --rm replay
-
-# Consume retained events continuously; startingOffsets defaults to earliest.
-docker compose --profile streaming up --build spark refresh api dashboard
-```
-
-The first run downloads container images and the matching Spark Kafka connector. Evidence from the integration test is saved under `data/streaming-evidence/`; CI uploads its JSON reports and Spark logs. The test uses a unique topic and removes only that topic when finished.
-
-Broker listeners are `127.0.0.1:9092` for host programs and `kafka:29092` for Compose services. The host port binds only to loopback. The local broker is single-node and has no authentication: it is a development setup, not a production deployment.
-
-For a host-native producer and Spark runtime (Python 3.11+ and Java 17 or 21):
-
-```bash
-pip install -e '.[dev,streaming,spark]'
-merchmind run --transactions 50000 --customers 2500 --products 500
-docker compose --profile streaming run -T --rm kafka-init
-python -m merchmind.streaming --events-per-second 0
-python scripts/run_stream.py --bootstrap-servers 127.0.0.1:9092 \
-  --output data/streaming/output --checkpoint data/streaming/checkpoints \
-  --available-now --progress-report data/streaming/progress.json
-```
-
-`--available-now` drains currently available Kafka offsets and exits. Omit it for continuous operation. Restart with the same output, topic and checkpoint paths to resume saved offsets. A new checkpoint uses `--starting-offsets earliest` by default; `latest` is available explicitly. Checkpoints from the old single-output job are incompatible: use a new output/checkpoint root when migrating.
-
-**Event-time behavior:** aggregates are appended only after the ten-minute watermark passes a window's end. The newest windows remain pending until later events advance event time—even with `--available-now`. Raw events are written immediately, including malformed or too-late messages. Basic field checks protect aggregates; reference validation and transaction-ID deduplication occur in Silver and the live serving publisher, not in the five-minute Spark aggregates. Replaying the same input again creates new Kafka events; producer idempotence prevents transport retries from duplicating messages, not intentional replays. Stream revenue reverses returned lines and matches the batch convention; units count transaction quantities in both paths.
-
-See [streaming verification](docs/streaming.md) for output inspection, recovery and test evidence.
-
-## Forecast validation and recovery checks
-
-```bash
-merchmind backtest --data-dir data
-# Optional local fault-injection lab: Docker with about 8 GB RAM, no AWS.
-python scripts/verify_resilience.py
-```
-
-The rolling backtest uses 23 non-overlapping 28-day holdouts across eight categories in the default synthetic dataset. Forecast WAPE is **29.40%**, compared with **28.78%** for a trailing 28-day mean and **39.25%** for last-week demand. The nominal 80% band covered **75.21%** of holdouts. These results do not establish real-retailer accuracy or calibrated uncertainty. [Validation details and reproducible evidence](docs/validation.md).
-
-## Engineering workflow
-
-```bash
-make format
 make lint
 make test
+make airflow-test       # Actual Airflow tasks; isolated synthetic commit-file fixtures.
+make streaming-test     # Real broker and Spark, daily close, and stock API.
+make compose-check      # Validate the combined stack configuration.
 ```
 
-GitHub Actions repeats linting and tests, then exercises a 5,000-transaction pipeline run. Unit tests cover deterministic generation, validation and quarantine behavior, medallion outputs, API contracts, forecasts, and mocked public-data clients without relying on live network calls.
+GitHub Actions runs application/SQL validation, Airflow verification, and broker/Spark integration. The badge links to current remote results; local reports do not establish the result of a specific GitHub Actions run.
 
-## Cloud deployment
+## Forecasts and public-data adapters
 
-**Deferred to avoid cloud charges.** Terraform definitions exist, but no AWS deployment has been verified. Applying them can incur charges even with MSK disabled. The local validation workflow needs no AWS account.
+The demand baseline uses matching weekdays from the trailing 84 days. The dated synthetic backtest measured **29.40% WAPE**, versus **28.78%** for a trailing 28-day mean, with **75.21% coverage** for its nominal 80% band. It did not beat the mean baseline. Run `merchmind backtest --data-dir data` to evaluate your dataset; these figures do not establish real-retailer accuracy.
 
-```bash
-cd infrastructure/terraform
-terraform init
-terraform plan -var='project_name=merchmind-dev'
-```
+Optional SEC EDGAR and BLS clients are separate from the synthetic pipeline. They do not automatically feed the streaming demo. Keep identifying headers and credentials in local configuration. [Methodology and source boundaries](docs/methodology.md).
 
-Review the plan and your AWS account's current pricing before applying. Terraform state may contain infrastructure metadata and must not be committed.
+## Repository map
 
-## Roadmap
+| Path | Purpose |
+|---|---|
+| `src/merchmind/` | Analytics, contracts, publishers, reconciliation, API, dashboard |
+| `dags/` | Airflow task graph and UTC daily schedule |
+| `jobs/spark/` | Transaction windows and raw inventory ingestion |
+| `scripts/` | Launchers, orchestration checks, resilience experiments |
+| `tests/` | Unit, application, and real broker/Spark integration tests |
+| `sql/postgres/` | Warehouse schema and analytical views |
+| `docker-compose*.yml` | Batch, streaming, Airflow, inventory, optional resilience services |
+| `docs/` | Architecture, operations, contracts, execution evidence |
+| `infrastructure/terraform/` | Undeployed AWS design |
 
-- Backtest the baseline against LightGBM and hierarchical forecasts using rolling-origin evaluation.
-- Add dbt models and Great Expectations contracts over Athena or a warehouse.
-- Add event-time anomaly alerts for returns, discount depth, and demand spikes.
-- Join SEC filings to real apparel CPI and retail-sales series, preserving source lineage and release dates.
-- Add an optimization layer for open-to-buy allocation under inventory, margin, and service-level constraints.
+## Limits and next steps
+
+The normal demo uses one Docker host and one broker. Analytical rebuilding, reconciliation, and stock projection scan retained history with pandas. PostgreSQL is batch-loaded; dimensions stay fixed while streaming. Configure retention before long runs. The five-minute windows do not apply the full reference-aware validation used by live serving.
+
+AWS deployment is deferred, and Terraform does not deploy the Airflow/stock application. See [AWS design and gaps](docs/aws_deployment.md). Next steps include incremental reconciliation, explicit retention, automated late-date reprocessing, inventory-aware forecasts, and warehouse model transformations.
 
 ## License
 

@@ -11,5 +11,6 @@ RUN pip install --no-cache-dir '.[warehouse]'
 
 COPY data ./data
 COPY sql ./sql
+COPY .streamlit ./.streamlit
 EXPOSE 8000 8501
 CMD ["uvicorn", "merchmind.api:app", "--host", "0.0.0.0", "--port", "8000"]

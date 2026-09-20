@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "merchmind"
-version = "0.1.0"
-description = "Cloud-native fashion retail market intelligence and merchandising analytics platform"
+version = "0.2.0"
+description = "Retail streaming, inventory, and daily reconciliation with Kafka, Spark, and Airflow"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Akshaya Jayakanth" }]
-keywords = ["fashion", "retail", "data-engineering", "analytics", "aws", "spark", "kafka"]
+keywords = ["retail", "data-engineering", "analytics", "spark", "kafka", "airflow", "inventory"]
 dependencies = [
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",

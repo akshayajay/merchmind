@@ -1,0 +1,75 @@
+# Add to the existing compose stack with -f docker-compose.yml -f docker-compose.airflow.yml.
+services:
+  airflow-data-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    user: "0:0"
+    entrypoint: ["bash", "-ec"]
+    command: ["chown -R 50000:0 /retail-data"]
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    volumes:
+      - merchmind-data:/retail-data
+
+  refresh:
+    user: "50000:0"
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src:ro
+    depends_on:
+      airflow-data-init:
+        condition: service_completed_successfully
+
+  api:
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src:ro
+
+  dashboard:
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src:ro
+
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    command: standalone
+    depends_on:
+      airflow-data-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      PYTHONPATH: /opt/merchmind/src
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      MERCHMIND_DATA_DIR: /opt/airflow/retail-data
+      MERCHMIND_RAW_DIR: /opt/airflow/stream-data/output/raw
+    volumes:
+      - airflow-home:/opt/airflow
+      - ./src:/opt/merchmind/src:ro
+      - ./dags:/opt/airflow/dags:ro
+      - merchmind-data:/opt/airflow/retail-data
+      - stream-data:/opt/airflow/stream-data:ro
+
+  airflow-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    profiles: [verification]
+    entrypoint: [python, /opt/merchmind/scripts/verify_airflow.py]
+    environment:
+      AIRFLOW_HOME: /tmp/airflow-verification
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    volumes:
+      - ./data/airflow-evidence:/evidence
+
+volumes:
+  airflow-home:

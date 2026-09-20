@@ -1,0 +1,23 @@
+{
+  "spark_version": "4.0.1",
+  "topic": "merchmind-test-8a947d83409c45be973976090238992e",
+  "broker_confirmed_messages": 12,
+  "raw_rows": 12,
+  "finalized_aggregate_rows": 5,
+  "finalized_net_revenue": 31.0,
+  "malformed_or_invalid_messages": 3,
+  "late_rows_dropped_from_aggregates": 1,
+  "checkpoint_restart_new_rows": 2,
+  "idle_restart_new_rows": 0,
+  "sigkill_recovery_passed": true,
+  "live_gold_new_transactions": 8,
+  "daily_close": {
+    "net_revenue": "999035.00",
+    "transactions": 8,
+    "units": 1010
+  },
+  "daily_close_replay_idempotent": true,
+  "inventory_kafka_events": 3,
+  "inventory_on_hand": 1092,
+  "checks_passed": true
+}

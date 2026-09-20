@@ -1,0 +1,54 @@
+{
+  "scheduler_run_id": "retail-smoke-final-20260920",
+  "close": {
+    "actual": {
+      "net_revenue": "1564.96",
+      "transactions": 33,
+      "units": 37
+    },
+    "attempt": "25681e41ce5a4586a51dd507ee3de75a",
+    "business_date": "2025-12-30",
+    "committed_raw_files": [
+      "part-00000-b13da96f-1960-45f2-8aae-0c91a31a9759-c000.snappy.parquet",
+      "part-00001-ffd01db3-9927-486f-8e2c-1283d9caacfb-c000.snappy.parquet",
+      "part-00002-04b8e932-03d4-4a5d-ad61-597d6d642c21-c000.snappy.parquet"
+    ],
+    "expected": {
+      "net_revenue": "1564.96",
+      "transactions": 33,
+      "units": 37
+    },
+    "forecast": {
+      "forecast_rows": 224,
+      "training_rows": 24700
+    },
+    "passed": true,
+    "prepared_at_utc": "2026-09-20T16:22:30.968350+00:00",
+    "published_at_utc": "2026-09-20T16:22:35.888198+00:00",
+    "quality": {
+      "duplicate_rows": 24798,
+      "invalid_rate": 0.00606425702811245,
+      "invalid_rows": 302,
+      "malformed_json_rows": 0,
+      "max_invalid_rate": 0.05,
+      "passed": true,
+      "scope": "entire pinned source history; exact duplicates excluded from invalid rate",
+      "source_rows": 49800
+    },
+    "record_or_category_mismatch": null,
+    "semantics": "UTC event date, first valid business ID wins; all arrivals known now",
+    "serving_revision": "27a6bf0fe915b2c61148ddad50f2b76ff28f13f30557123f2b454f4f019853a4",
+    "stream_events": 24700
+  },
+  "stock_duplicate_check": {
+    "product_id": "P000185",
+    "on_hand": 5,
+    "sold_units": 461,
+    "restocked_return_units": 44,
+    "low_stock": true,
+    "stock_status": "Low",
+    "product_name": "Silver Athleisure Activewear",
+    "category": "Activewear"
+  },
+  "dashboard_health_status": 200
+}
