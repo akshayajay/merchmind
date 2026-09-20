@@ -1,0 +1,78 @@
+services:
+  spark:
+    environment:
+      SPARK_IVY_DIR: /tmp/merchmind-ivy/transactions
+
+  inventory-init:
+    image: redpandadata/redpanda:v24.3.5
+    profiles: [inventory]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -ec
+      - >-
+        rpk topic describe retail-inventory -X brokers=kafka:29092 >/dev/null 2>&1 ||
+        rpk topic create retail-inventory --partitions 3 --replicas 1 -X brokers=kafka:29092
+
+  inventory-seed:
+    build: .
+    profiles: [inventory]
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    command: [python, -m, merchmind.inventory, --data-dir, /app/data, --seed-demo]
+    volumes:
+      - merchmind-data:/app/data
+
+  inventory-replay:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    profiles: [inventory]
+    depends_on:
+      inventory-init:
+        condition: service_completed_successfully
+      inventory-seed:
+        condition: service_completed_successfully
+    command: [python3, -m, merchmind.streaming, --input, /app/data/bronze/inventory_events.parquet,
+              --bootstrap-servers, "kafka:29092", --topic, retail-inventory,
+              --event-type, inventory, --events-per-second, "0"]
+    volumes:
+      - merchmind-data:/app/data:ro
+
+  inventory-spark:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    profiles: [inventory]
+    environment:
+      SPARK_IVY_DIR: /tmp/merchmind-ivy/inventory
+    depends_on:
+      inventory-init:
+        condition: service_completed_successfully
+    command: [python3, scripts/run_stream.py, --bootstrap-servers, "kafka:29092",
+              --topic, retail-inventory, --raw-only, --output, /app/stream-data/inventory,
+              --checkpoint, /app/stream-data/inventory-checkpoints]
+    volumes:
+      - stream-data:/app/stream-data
+      - spark-ivy:/tmp/merchmind-ivy
+
+  stock-refresh:
+    build: .
+    profiles: [inventory]
+    # Same unprivileged identity as Airflow and the transaction publisher.
+    user: "50000:0"
+    environment:
+      PYTHONPATH: /app/src
+    depends_on:
+      airflow-data-init:
+        condition: service_completed_successfully
+    command: [python, -m, merchmind.inventory, --data-dir, /app/data,
+              --raw-dir, /app/stream-data/inventory/raw, --watch]
+    restart: on-failure
+    volumes:
+      - ./src:/app/src:ro
+      - merchmind-data:/app/data
+      - stream-data:/app/stream-data:ro

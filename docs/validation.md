@@ -1,6 +1,26 @@
-# Local validation, September 19, 2026
+# Validation and execution evidence
 
 All work below ran locally. No AWS resources were created and no cloud deployment is claimed.
+
+## Retail platform verification — September 20, 2026
+
+The [current execution report](verification/retail-platform-validation.md) records 38
+application tests and 88.61% coverage, real broker/Spark integration, and actual Airflow
+task and scheduler runs. Checks cover daily source/serving reconciliation, late-event
+reruns, quality-gate retry exhaustion and recovery, inventory duplicates, and live stock.
+
+- [Airflow task evidence](verification/airflow-daily-close.json): four successful runs and
+  one expected failed run with three attempts; previous close preserved.
+- [Kafka/Spark evidence](verification/retail-streaming.json): 12 transaction messages,
+  3 inventory messages, checkpoint/SIGKILL recovery, eight unique business transactions.
+- [Full-stack runtime](verification/retail-runtime.json): 24,700 committed stream events;
+  the selected day reconciled 33 transactions, 37 units, and $1,564.96.
+
+Reproduce with `make test`, `make airflow-test`, and `make streaming-test`. The
+[GitHub workflow](https://github.com/akshayajay/merchmind/actions/workflows/ci.yml) reports
+current remote checks separately from these local artifacts. The sections below preserve
+the earlier September 19 experiments and their original datasets; they are not new
+measurements of the expanded September 20 stack.
 
 ## Forecast backtesting
 
@@ -16,7 +36,7 @@ The default data spans January 1, 2024–December 30, 2025. Evaluation begins af
 
 The 28-day mean performed slightly better than the current forecast. Its simpler fit to this synthetic generator is not evidence it will win on real retail demand. The existing ±1.28-standard-deviation bands are nominal 80% bands; measured coverage is lower and they have not been recalibrated against these holdouts. Do not claim improved retail forecast accuracy. [Full metrics](verification/forecast-backtest.json).
 
-## Crash recovery and consistent serving
+## September 19 crash recovery and consistent serving
 
 `make streaming-test` starts a real Kafka-compatible broker and Spark 4.0.1 in Docker. In addition to initial ingestion, watermark checks, a graceful checkpoint restart and an idle restart, it kills a running Spark driver with SIGKILL after a raw-file commit. Restarting with the same checkpoints retains all 11 broker-confirmed messages exactly once by Kafka topic/partition/offset. Five finalized channel windows reconcile to six transactions and $31 net revenue. Three invalid messages remain auditable. The final marker transaction is still in an open window.
 

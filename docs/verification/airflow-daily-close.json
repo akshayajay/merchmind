@@ -1,0 +1,46 @@
+{
+  "airflow_version": "3.1.0",
+  "verification_mode": "real Airflow dag.test; synthetic Spark file commits",
+  "dag_id": "retail_daily_close",
+  "task_ids": [
+    "forecast",
+    "prepare",
+    "publish",
+    "quality",
+    "reconcile"
+  ],
+  "runs": [
+    {
+      "business_date": "2026-01-01",
+      "state": "success",
+      "transactions": 1,
+      "net_revenue": "20.00"
+    },
+    {
+      "business_date": "2026-01-01",
+      "state": "success",
+      "transactions": 2,
+      "net_revenue": "27.50"
+    },
+    {
+      "business_date": "2026-01-02",
+      "state": "success",
+      "transactions": 0,
+      "net_revenue": "0.00"
+    },
+    {
+      "business_date": "2026-01-01",
+      "state": "failed",
+      "expected_failure": "quality threshold",
+      "quality_attempts": 3,
+      "previous_close_preserved": true
+    },
+    {
+      "business_date": "2026-01-01",
+      "state": "success",
+      "transactions": 2,
+      "net_revenue": "27.50"
+    }
+  ],
+  "checks_passed": true
+}

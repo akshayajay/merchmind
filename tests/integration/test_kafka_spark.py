@@ -42,7 +42,7 @@ def transaction(identifier, minute, *, channel="Online", quantity=1, price=10.0,
     }
 
 
-def run_spark(broker: str, topic: str, directory: Path, stage: str) -> dict:
+def run_spark(broker: str, topic: str, directory: Path, stage: str, *, raw_only=False) -> dict:
     report = directory / f"{stage}-progress.json"
     command = [
         sys.executable,
@@ -60,6 +60,8 @@ def run_spark(broker: str, topic: str, directory: Path, stage: str) -> dict:
         str(report),
     ]
     log = directory / f"{stage}-spark.log"
+    if raw_only:
+        command.append("--raw-only")
     with log.open("w") as stream:
         result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=240)
     assert result.returncode == 0, log.read_text()[-12000:]
@@ -235,11 +237,61 @@ def test_kafka_spark_delivery_aggregates_and_checkpoint_restart(tmp_path):
         client = TestClient(create_app(serving))
         assert client.get("/v1/kpis").json()["orders"] == baseline.clean_rows + 8
         assert refresh_from_stream(serving, directory / "output/raw") is None
+        from merchmind.close import run_close
+        from merchmind.inventory import refresh_inventory, stock_path
+
+        # A duplicate at a NEW Kafka offset must not inflate the final daily close.
+        pd.DataFrame([initial[0]]).to_parquet(parquet, index=False)
+        assert replay_transactions(parquet, broker, topic, 0) == 1
+        duplicate_progress = run_spark(broker, topic, directory, "duplicate-replay")
+        assert input_rows(duplicate_progress, "merchmind-raw") == 1
+        close = run_close(serving, directory / "output/raw", "2026-01-01")
+        assert close["stream_events"] == 12
+        assert close["actual"] == {"transactions": 8, "units": 1010, "net_revenue": "999035.00"}
+        assert close["passed"]
+        assert (
+            run_close(serving, directory / "output/raw", "2026-01-01")["actual"] == close["actual"]
+        )
+        assert client.get("/v1/daily-close/2026-01-01").json()["passed"]
+        assert client.get("/v1/daily-close/invalid").status_code == 422
+        assert client.get("/v1/daily-close/2023-01-01").status_code == 404
+
+        inventory_topic = topic + "-inventory"
+        admin.create_topics([NewTopic(inventory_topic, num_partitions=1, replication_factor=1)])[
+            inventory_topic
+        ].result(30)
+        try:
+            opening = {
+                "event_id": "opening",
+                "event_ts": "2026-01-01T00:00:00Z",
+                "product_id": "P1",
+                "kind": "opening",
+                "quantity_delta": 2000,
+            }
+            receipt = {**opening, "event_id": "receipt", "kind": "receipt", "quantity_delta": 100}
+            inventory_input = directory / "inventory-input.parquet"
+            pd.DataFrame([opening, opening, receipt]).to_parquet(inventory_input, index=False)
+            assert (
+                replay_transactions(
+                    inventory_input, broker, inventory_topic, 0, event_type="inventory"
+                )
+                == 3
+            )
+            inventory_dir = directory / "inventory"
+            inventory_dir.mkdir()
+            run_spark(broker, inventory_topic, inventory_dir, "inventory-ingest", raw_only=True)
+            inventory_report = refresh_inventory(serving, inventory_dir / "output/raw")
+            assert inventory_report["inventory_events"] == 3
+            stock = pd.read_parquet(stock_path(serving))
+            assert stock.iloc[0].on_hand == 1092
+            assert client.get("/v1/stock").json()[0]["on_hand"] == 1092
+        finally:
+            admin.delete_topics([inventory_topic])[inventory_topic].result(30)
         evidence = {
             "spark_version": first["spark_version"],
             "topic": topic,
-            "broker_confirmed_messages": 11,
-            "raw_rows": 11,
+            "broker_confirmed_messages": 12,
+            "raw_rows": 12,
             "finalized_aggregate_rows": len(aggregates),
             "finalized_net_revenue": 31.0,
             "malformed_or_invalid_messages": 3,
@@ -248,6 +300,10 @@ def test_kafka_spark_delivery_aggregates_and_checkpoint_restart(tmp_path):
             "idle_restart_new_rows": 0,
             "sigkill_recovery_passed": True,
             "live_gold_new_transactions": live["new_transactions"],
+            "daily_close": close["actual"],
+            "daily_close_replay_idempotent": True,
+            "inventory_kafka_events": 3,
+            "inventory_on_hand": 1092,
             "checks_passed": True,
         }
         (directory / "summary.json").write_text(json.dumps(evidence, indent=2) + "\n")

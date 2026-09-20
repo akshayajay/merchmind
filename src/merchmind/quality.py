@@ -27,7 +27,6 @@ def validate_transactions(
     frame["quantity"] = pd.to_numeric(frame["quantity"], errors="coerce")
     frame["unit_price"] = pd.to_numeric(frame["unit_price"], errors="coerce")
     frame["discount_pct"] = pd.to_numeric(frame["discount_pct"], errors="coerce")
-    duplicate_mask = frame.duplicated("transaction_id", keep="first")
     null_id_mask = (
         frame[["transaction_id", "customer_id", "product_id"]]
         .apply(
@@ -46,7 +45,6 @@ def validate_transactions(
     unknown_product_mask = ~frame["product_id"].isin(products["product_id"])
 
     reason_masks = {
-        "duplicate_transaction_id": duplicate_mask,
         "missing_required_id": null_id_mask,
         "invalid_quantity": invalid_quantity_mask,
         "invalid_price": invalid_price_mask,
@@ -67,6 +65,12 @@ def validate_transactions(
         rejection_reason.loc[mask] = rejection_reason.loc[mask].apply(
             lambda current, rejection=reason: f"{current}|{rejection}" if current else rejection
         )
+
+    # A malformed first arrival must not reserve an ID and suppress a later valid event.
+    valid = rejection_reason.eq("")
+    duplicate_mask = pd.Series(False, index=frame.index)
+    duplicate_mask.loc[valid] = frame.loc[valid].duplicated("transaction_id", keep="first")
+    rejection_reason.loc[duplicate_mask] = "duplicate_transaction_id"
 
     rejected_mask = rejection_reason.ne("")
     quarantine = frame.loc[rejected_mask].copy()

@@ -95,6 +95,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True, help="Dedicated durable checkpoint root")
     parser.add_argument("--starting-offsets", choices=["earliest", "latest"], default="earliest")
     parser.add_argument("--available-now", action="store_true", help="Drain backlog and stop")
+    parser.add_argument("--raw-only", action="store_true", help="Ingest inventory envelopes only")
     parser.add_argument("--progress-report", type=Path, help="Write local query evidence on exit")
     args = parser.parse_args()
 
@@ -122,7 +123,10 @@ def main() -> None:
                 "CAST(value AS STRING) AS value",
             )
         )
-        for name, frame in (("raw", raw), ("aggregates", aggregate_events(raw))):
+        outputs = [("raw", raw)]
+        if not args.raw_only:
+            outputs.append(("aggregates", aggregate_events(raw)))
+        for name, frame in outputs:
             writer = (
                 frame.writeStream.format("parquet")
                 .queryName(f"merchmind-{name}")

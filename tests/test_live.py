@@ -1,4 +1,5 @@
 import json
+import shutil
 
 import pandas as pd
 import pytest
@@ -128,3 +129,14 @@ def test_invalid_revision_is_rejected(tmp_path):
     (tmp_path / "live/current.json").write_text(json.dumps({"revision": "../../elsewhere"}))
     with pytest.raises(ValueError, match="revision"):
         serving_paths(tmp_path)
+
+
+def test_same_source_cut_has_same_revision_across_volume_mount_paths(baseline, tmp_path):
+    root, raw, row = baseline
+    commit(raw, 0, [json.dumps({**row, "transaction_id": "new-sale"})])
+    original = refresh_from_stream(root, raw)
+    mounted_root, mounted_raw = tmp_path / "other-mount", tmp_path / "other-raw-mount"
+    shutil.copytree(root, mounted_root)
+    shutil.copytree(raw, mounted_raw)
+    assert refresh_from_stream(mounted_root, mounted_raw) is None
+    assert serving_paths(mounted_root).root.name == original["revision"]

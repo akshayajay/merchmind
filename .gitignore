@@ -29,3 +29,6 @@ infrastructure/terraform/.terraform.lock.hcl
 data/live/
 data/resilience-evidence*/
 data/ui-stream/
+data/closes/
+data/inventory/
+data/airflow-evidence/

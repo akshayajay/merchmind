@@ -103,8 +103,14 @@ def refresh_from_stream(root: Path, raw_dir: Path) -> dict | None:
                 "macro_indicators",
             )
         ]
-        fingerprint = [(str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in files + base_files]
-        revision = hashlib.sha256(json.dumps(fingerprint).encode()).hexdigest()
+        # Airflow and the publisher mount the same volumes at different paths.
+        # Identify files by role/name so identical inputs share one revision.
+        fingerprint = [
+            (role, p.name, p.stat().st_size, p.stat().st_mtime_ns)
+            for role, paths in (("raw", files), ("baseline", base_files))
+            for p in paths
+        ]
+        revision = hashlib.sha256(json.dumps([3, fingerprint]).encode()).hexdigest()
         current = live / "current.json"
         if current.exists() and json.loads(current.read_text())["revision"] == revision:
             return None
@@ -156,6 +162,7 @@ def refresh_from_stream(root: Path, raw_dir: Path) -> dict | None:
             "duplicate_ids_ignored": duplicate_ids,
             "quarantined_events": len(validation.quarantine) + len(invalid),
             "stream_valid_events": len(validation.clean),
+            "committed_raw_files": [path.name for path in files],
         }
         # The displayed quality rate refers to all received stream events, including bad JSON.
         report["stream_pass_rate"] = len(validation.clean) / len(raw) if len(raw) else 1.0

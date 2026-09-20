@@ -8,6 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 from merchmind.config import DataPaths, default_data_dir
+from merchmind.inventory import stock_path
 from merchmind.live import serving_paths
 from merchmind.pipeline import run_pipeline
 
@@ -18,6 +19,7 @@ st.markdown(
     .stApp { background: #f8f4ec; color: #201b17; }
     [data-testid="stMetric"] { background: #fffdf8; border: 1px solid #ddcfbe;
       padding: 1rem; border-radius: 0.75rem; }
+    [data-testid="stMetric"] * { color: #201b17 !important; }
     h1, h2, h3 { font-family: Georgia, serif; }
     </style>
     """,
@@ -80,6 +82,24 @@ def render() -> None:
         f"{100 * float(kpis['data_quality_pass_rate']):.1f}%",
     )
 
+    inventory_path = stock_path(base.root)
+    if inventory_path is not None:
+        st.subheader("Product stock")
+        stock = pd.read_parquet(inventory_path)
+        st.caption("Opening stock + receipts + adjustments − sales + restockable returns")
+        st.dataframe(
+            stock[["product_name", "category", "on_hand", "stock_status"]].head(20),
+            hide_index=True,
+            width="stretch",
+        )
+    closes = sorted((base.root / "closes").glob("*/current.json"))
+    if closes:
+        close = _load_json(closes[-1])
+        st.success(
+            f"Daily close {close['business_date']} reconciled · "
+            f"{close['actual']['transactions']:,} transactions · "
+            f"${float(close['actual']['net_revenue']):,.2f} net revenue"
+        )
     st.subheader("Market pulse")
     left, right = st.columns([1.6, 1])
     category_totals = daily.groupby("category", as_index=False)["net_revenue"].sum()

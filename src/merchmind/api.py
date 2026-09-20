@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 
 from merchmind import __version__
 from merchmind.config import default_data_dir
+from merchmind.inventory import stock_path
 from merchmind.live import serving_paths
 
 
@@ -31,7 +32,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     application = FastAPI(
         title="MERCHMIND API",
-        description="Fashion retail market intelligence and merchandising analytics",
+        description="Retail analytics, live product stock, and reconciled daily reports",
         version=__version__,
     )
 
@@ -79,6 +80,26 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     def live_status() -> dict[str, object]:
         report = paths().reports / "live_refresh.json"
         return json.loads(report.read_text()) if report.exists() else {"mode": "batch"}
+
+    @application.get("/v1/stock")
+    def stock(limit: int = Query(100, ge=1, le=2000)) -> list[dict[str, object]]:
+        path = stock_path(resolved_data_dir)
+        if path is None:
+            raise HTTPException(status_code=404, detail="No inventory projection available")
+        return _records(path, limit)
+
+    @application.get("/v1/daily-close/{business_date}")
+    def daily_close(business_date: str) -> dict[str, object]:
+        from datetime import date
+
+        try:
+            date.fromisoformat(business_date)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Use a YYYY-MM-DD date") from exc
+        path = resolved_data_dir / "closes" / business_date / "current.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="No successful close for this date")
+        return json.loads(path.read_text())
 
     return application
 

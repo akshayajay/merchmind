@@ -16,6 +16,7 @@ def replay_transactions(
     topic: str,
     events_per_second: float,
     delivery_timeout: float = 30,
+    event_type: str = "transaction",
 ) -> int:
     """Replay Silver rows and return broker-confirmed deliveries, or raise on failure."""
     if not math.isfinite(events_per_second) or events_per_second < 0:
@@ -38,7 +39,11 @@ def replay_transactions(
             "message.timeout.ms": max(1, int(delivery_timeout * 1000)),
         }
     )
-    frame = pd.read_parquet(parquet_path).sort_values("transaction_ts")
+    if event_type not in {"transaction", "inventory"}:
+        raise ValueError("event_type must be transaction or inventory")
+    time_column = "event_ts" if event_type == "inventory" else "transaction_ts"
+    key_column = "product_id" if event_type == "inventory" else "transaction_id"
+    frame = pd.read_parquet(parquet_path).sort_values(time_column)
     delay = 1 / events_per_second if events_per_second > 0 else 0
     delivered = 0
     failures: list[str] = []
@@ -51,13 +56,13 @@ def replay_transactions(
             failures.append(str(error))
 
     for record in frame.to_dict(orient="records"):
-        record["transaction_ts"] = pd.Timestamp(record["transaction_ts"]).isoformat()
+        record[time_column] = pd.Timestamp(record[time_column]).isoformat()
         deadline = time.monotonic() + delivery_timeout
         while True:
             try:
                 producer.produce(
                     topic,
-                    key=str(record["transaction_id"]),
+                    key=str(record[key_column]),
                     value=json.dumps(record, default=str).encode("utf-8"),
                     on_delivery=on_delivery,
                 )
@@ -90,6 +95,7 @@ def main() -> None:
     )
     parser.add_argument("--events-per-second", type=float, default=100)
     parser.add_argument("--delivery-timeout", type=float, default=30)
+    parser.add_argument("--event-type", choices=["transaction", "inventory"], default="transaction")
     args = parser.parse_args()
     count = replay_transactions(
         args.input,
@@ -97,6 +103,7 @@ def main() -> None:
         args.topic,
         args.events_per_second,
         args.delivery_timeout,
+        args.event_type,
     )
     print(f"Broker confirmed {count:,} events delivered to {args.topic}")
 

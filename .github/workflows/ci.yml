@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  airflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the complete retail stack configuration
+        run: make compose-check
+      - name: Execute daily close DAG and late-event rerun
+        run: |
+          mkdir -p data/airflow-evidence
+          chmod 777 data/airflow-evidence
+          make airflow-test
+      - name: Upload Airflow execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: airflow-evidence
+          path: data/airflow-evidence
+
   test:
     runs-on: ubuntu-latest
     services:
