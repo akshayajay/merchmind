@@ -119,13 +119,17 @@ Recorded local verification on September 20, 2026:
 
 | Check | Observed result |
 |---|---|
-| Application tests | 38 passed; 88.61% coverage |
+| Application tests | 38 passed; **88.61% coverage** ([saved CI summary](docs/verification/application-tests-2026-09-20.md)) |
 | Real broker + Spark | Checkpoint restarts, forced-driver-crash recovery, duplicates, and late arrivals passed |
 | Airflow tasks | Four successful runs; an injected failure exhausted three attempts, preserved the previous close, then recovered |
 | Full-stack scheduler | 24,700 committed stream events; selected day reconciled 33 transactions, 37 units, and $1,564.96 |
 | Live inventory | Duplicate stock adjustment produced one balance change; API and browser showed five units and a low-stock flag |
 
 These are test observations, not throughput or production-availability claims. See the [execution report and machine-readable evidence](docs/verification/retail-platform-validation.md). Older experiments remain separately dated in [validation](docs/validation.md).
+
+The application-test figures correspond to commit [`2f0c281`](https://github.com/akshayajay/merchmind/commit/2f0c281ca0f7ec8c7802aa41f7ad0aa8f4d695f7) in [PR #3](https://github.com/akshayajay/merchmind/pull/3). The [saved CI summary](docs/verification/application-tests-2026-09-20.md) preserves the coverage table, test counts, measurement scope, and original Actions run reference. This is a dated coverage snapshot, separate from the live CI status badge above.
+
+**Earlier streaming reconciliation — September 19, 2026:** the implementation and evidence committed as [`49cff7d`](https://github.com/akshayajay/merchmind/commit/49cff7d435035222e1b4afee15ca5b09753f8747) in [PR #1](https://github.com/akshayajay/merchmind/pull/1) recorded **49,400 broker-confirmed events** consumed across three partitions. All 44,687 finalized windows, covering 49,398 transactions, matched batch calculations; two transactions remained pending behind the watermark. See the [revision-pinned evidence](https://github.com/akshayajay/merchmind/blob/49cff7d435035222e1b4afee15ca5b09753f8747/docs/streaming-verification.json) and [reproduction instructions at that revision](https://github.com/akshayajay/merchmind/blob/49cff7d435035222e1b4afee15ca5b09753f8747/docs/streaming.md). This was a local execution check, not a throughput benchmark.
 
 ```bash
 make lint
